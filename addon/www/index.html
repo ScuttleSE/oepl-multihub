@@ -114,6 +114,19 @@
   .fw { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .fw span { flex: 1; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  #mediadlg { width: min(760px, calc(100vw - 32px)); }
+  .crumbs { padding: 0 24px; display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+  .crumbs button { padding: 4px 6px; text-transform: none; }
+  .media { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; padding: 12px 24px;
+    max-height: 55vh; overflow: auto; }
+  .media button {
+    background: var(--secondary-background-color); border: 0; border-radius: 8px; padding: 0; cursor: pointer;
+    color: inherit; font: inherit; overflow: hidden; display: flex; flex-direction: column; text-align: left;
+  }
+  .media button:hover { outline: 2px solid var(--primary-color); }
+  .media .thumb { aspect-ratio: 4 / 3; width: 100%; object-fit: cover; display: block; background: var(--divider-color); }
+  .media .folder { aspect-ratio: 4 / 3; width: 100%; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .media .name { font-size: 12px; padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   table { width: 100%; border-collapse: collapse; }
   td { padding: 4px 0; vertical-align: top; }
   td:first-child { color: var(--secondary-text-color); width: 45%; }
@@ -231,6 +244,23 @@
     <div class="buttons">
       <button class="flat" value="cancel" formnovalidate>Cancel</button>
       <button class="raised" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="mediadlg">
+  <form method="dialog">
+    <h2 id="mediadlg-title">Upload image</h2>
+    <div class="crumbs" id="crumbs"></div>
+    <div class="media" id="media"></div>
+    <div class="buttons" style="align-items:center">
+      <label style="display:flex;gap:8px;align-items:center;margin-right:auto;grid:none">
+        <span>Dithering</span>
+        <select id="mediadither">
+          <option value="1">Burkes (photos)</option><option value="2">Ordered</option><option value="0">None</option>
+        </select>
+      </label>
+      <button class="flat" type="button" id="fromcomputer">From this computer…</button>
+      <button class="flat" value="cancel">Cancel</button>
     </div>
   </form>
 </dialog>
@@ -418,7 +448,7 @@ $("#tags").addEventListener("click", async (e) => {
   const t = tags.get(mac);
   const act = b.dataset.act;
   if (act === "settings") return openTagDialog(t);
-  if (act === "upload") { uploadMac = mac; return $("#imgfile").click(); }
+  if (act === "upload") { uploadMac = mac; return openMedia(t); }
   if (act === "del" && !confirm(`Delete ${t.alias || mac} from the database? It comes back when it checks in again.`)) return;
   if ((act === "reboot" || act === "scan") && !confirm(`Send "${act}" to ${t.alias || mac}?`)) return;
   const r = await post("tag_cmd", { mac, cmd: act });
@@ -554,13 +584,57 @@ $("#imgfile").addEventListener("change", async (e) => {
   const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.95));
   const fd = new FormData();
   fd.append("mac", t.mac);
-  fd.append("dither", "1");
+  fd.append("dither", $("#mediadither").value);
   fd.append("image", blob, "upload.jpg");
   try {
     const r = await fetch(url("imgupload"), { method: "POST", body: fd });
     toast(await r.text());
   } catch (err) { toast("Failed: " + err.message); }
 });
+
+// --- picker for HA's media folder ---
+let mediaPath = "";
+function openMedia(t) {
+  $("#mediadlg-title").textContent = "Upload image to " + (t.alias || t.mac);
+  $("#mediadlg").showModal();
+  browseMedia(mediaPath);
+}
+async function browseMedia(path) {
+  const box = $("#media");
+  let r;
+  try {
+    const res = await fetch(url("api/media?path=" + encodeURIComponent(path)));
+    if (!res.ok) throw new Error(res.status);
+    r = await res.json();
+  } catch (e) {
+    if (path) return browseMedia("");
+    $("#crumbs").innerHTML = "";
+    box.innerHTML = `<div class="empty" style="grid-column:1/-1">Home Assistant's media folder isn't available.</div>`;
+    return;
+  }
+  mediaPath = r.path;
+  const parts = r.path ? r.path.split("/") : [];
+  $("#crumbs").innerHTML = [`<button class="flat" type="button" data-path="">My media</button>`]
+    .concat(parts.map((p, i) => `› <button class="flat" type="button" data-path="${esc(parts.slice(0, i + 1).join("/"))}">${esc(p)}</button>`))
+    .join("");
+  const join = (n) => (r.path ? r.path + "/" : "") + n;
+  box.innerHTML = r.dirs.map((d) => `<button type="button" data-path="${esc(join(d))}"><div class="folder">📁</div><div class="name">${esc(d)}</div></button>`)
+    .concat(r.files.map((f) => `<button type="button" data-file="${esc(join(f))}"><img class="thumb" loading="lazy" alt="" src="${url("api/media/thumb?path=" + encodeURIComponent(join(f)))}"><div class="name">${esc(f)}</div></button>`))
+    .join("") || `<div class="empty" style="grid-column:1/-1">No images here. Add some in Home Assistant under Media › My media.</div>`;
+}
+$("#crumbs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-path]");
+  if (b) browseMedia(b.dataset.path);
+});
+$("#media").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.path !== undefined) return browseMedia(b.dataset.path);
+  $("#mediadlg").close();
+  toast("Sending…");
+  await post("api/media/upload", { mac: uploadMac, path: b.dataset.file, dither: $("#mediadither").value });
+});
+$("#fromcomputer").addEventListener("click", () => { $("#mediadlg").close(); $("#imgfile").click(); });
 
 // --- backup, restore, import, variables ---
 $("#backuplink").href = url("backup_db");

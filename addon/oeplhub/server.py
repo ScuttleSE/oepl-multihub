@@ -19,11 +19,13 @@ from .tagtypes import TagTypes
 
 log = logging.getLogger("server")
 
+MEDIA_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "www")
 
 
 class Server:
-    def __init__(self, core: Core, tagtypes: TagTypes):
+    def __init__(self, core: Core, tagtypes: TagTypes, media_dir=None):
+        self.media_dir = os.path.realpath(media_dir) if media_dir else None
         self.core = core
         self.tagtypes = tagtypes
         self.clients: set[web.WebSocketResponse] = set()
@@ -303,6 +305,83 @@ class Server:
         status, text = await self.run(self.core.import_from_ap, form["host"])
         return web.Response(status=status, text=text)
 
+    # --- HA media folder ---------------------------------------------------------------------------
+
+    def _media_path(self, rel):
+        if not self.media_dir:
+            raise web.HTTPNotFound(text="no media folder")
+        p = os.path.realpath(os.path.join(self.media_dir, (rel or "").lstrip("/")))
+        if p != self.media_dir and not p.startswith(self.media_dir + os.sep):
+            raise web.HTTPForbidden()
+        return p
+
+    async def api_media(self, request):
+        p = self._media_path(request.query.get("path"))
+        if not os.path.isdir(p):
+            raise web.HTTPNotFound()
+        dirs, files = [], []
+        for e in sorted(os.scandir(p), key=lambda e: e.name.lower()):
+            if e.name.startswith("."):
+                continue
+            if e.is_dir():
+                dirs.append(e.name)
+            elif os.path.splitext(e.name)[1].lower() in MEDIA_EXT:
+                files.append(e.name)
+        rel = "" if p == self.media_dir else os.path.relpath(p, self.media_dir)
+        return web.json_response({"path": rel, "dirs": dirs, "files": files})
+
+    async def api_media_thumb(self, request):
+        p = self._media_path(request.query.get("path"))
+        if not os.path.isfile(p):
+            raise web.HTTPNotFound()
+
+        def thumb():
+            from PIL import Image, ImageOps
+            with Image.open(p) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im.thumbnail((240, 240))
+                buf = io.BytesIO()
+                im.save(buf, "JPEG", quality=80)
+                return buf.getvalue()
+        try:
+            data = await self.run(thumb)
+        except Exception:
+            raise web.HTTPNotFound()
+        return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+    async def api_media_upload(self, request):
+        form = await request.post()
+        mac = self.mac_param(form.get("mac"))
+        t = self.core.db.get(mac) if mac else None
+        if t is None:
+            return web.Response(status=400, text="Error: mac not found")
+        p = self._media_path(form.get("path"))
+        if not os.path.isfile(p):
+            return web.Response(status=404, text="Error: file not found")
+        tt = await self.run(self.tagtypes.get, t.hwType)
+        if tt is None:
+            return web.Response(status=400, text=f"Error: unknown tag type {t.hwType:02X}")
+        w, h = (tt.height, tt.width) if t.rotate % 2 else (tt.width, tt.height)
+
+        def fit():
+            from PIL import Image, ImageOps
+            with Image.open(p) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im = ImageOps.fit(im, (w, h), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, "JPEG", quality=95)
+                return buf.getvalue()
+        try:
+            jpeg = await self.run(fit)
+        except Exception as e:
+            return web.Response(status=400, text=f"Error: can't read that image: {e}")
+        try:
+            dither = int(form.get("dither", 1))
+        except ValueError:
+            dither = 1
+        status, text = await self.run(self.core.upload_image, mac, jpeg, dither=dither)
+        return web.Response(status=status, text=text)
+
     async def api_hubs(self, request):
         return web.json_response(self.core.hub_status())
 
@@ -331,6 +410,9 @@ class Server:
             web.get("/backup_db", self.backup_db),
             web.post("/restore_db", self.restore_db),
             web.post("/api/import_ap", self.api_import_ap),
+            web.get("/api/media", self.api_media),
+            web.get("/api/media/thumb", self.api_media_thumb),
+            web.post("/api/media/upload", self.api_media_upload),
             web.get("/api/tag_fw", self.api_tag_fw),
             web.post("/api/tag_fw", self.api_tag_fw_update),
         ])
@@ -358,6 +440,7 @@ def parse_hub(spec: str) -> dict:
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data", default="./data", help="directory for the tag DB, images and settings")
+    p.add_argument("--media", help="HA media folder for the image picker (the addon uses /media)")
     p.add_argument("--hub", action="append", default=[], help="HOST[:PORT]@CHANNEL or /dev/ttyACM0@CHANNEL")
     p.add_argument("--config", help="JSON file with {\"hubs\": [{\"spec\": ..., \"channel\": ...}]}")
     p.add_argument("--tagtypes", action="append", default=[], help="extra directory with tagtype JSONs")
@@ -375,7 +458,7 @@ def main():
             hubs += json.load(f).get("hubs", [])
     tagtypes = TagTypes(os.path.join(a.data, "tagtypes"), a.tagtypes)
     core = Core(a.data, hubs, tagtypes, ack_timeout_ms=a.ack_timeout)
-    server = Server(core, tagtypes)
+    server = Server(core, tagtypes, a.media)
     web.run_app(server.app(), host=a.host, port=a.port, print=lambda *x: log.info("listening on %s:%d", a.host, a.port))
 
 

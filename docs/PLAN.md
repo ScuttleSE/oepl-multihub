@@ -335,6 +335,12 @@ OEPL channel plan:
        - Panel: an Upload image button on each card (the browser scales and crops to the tag size and rotation,
          then sends a JPEG to `/imgupload` with dither 1), alerts above the tag list (low battery, overdue,
          wakeupReason 0xE0), and a Backup tab (download, restore, import, variables).
+     - **Addon 0.5.0:** an image picker for HA's media folder. `config.yaml` maps `media:ro`, and `run.sh` passes
+       `--media /media`. `GET /api/media?path=` lists folders and images, `GET /api/media/thumb?path=` returns a
+       240 px JPEG, and `POST /api/media/upload mac path dither` fits the image to the tag size (respecting
+       rotation) with `ImageOps.fit` and then calls `upload_image`. Paths are confined to the media dir. Only
+       the local media folder is covered; other HA media sources (cameras, …) would need `homeassistant_api` and
+       the media_source websocket.
      - Groups: not needed in the addon. The HA integration's actions accept `label_id` and `area_id` targets (see
        `services.py`), so HA labels serve as tag groups.
      - Not yet / skipped: other content modes (clock, weather, …), tag mirroring, the stock drawing tool.

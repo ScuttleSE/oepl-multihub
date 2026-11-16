@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Upload image now opens a picker for Home Assistant's media folder (Media › My media), with thumbnails and folders.
+  Images are scaled and cropped to the tag on the addon. Choose the dithering in the picker. "From this
+  computer…" still uploads a local file.
+- The addon now has read-only access to `/media`.
+
 ## 0.4.0
 
 - Backup tab: download and restore the tag database. Backups from a stock access point (`tagDB.json`) work too.
