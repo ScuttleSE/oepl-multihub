@@ -4,12 +4,14 @@ Threads: each hub's HubLink calls on_event from its dispatcher thread. Web reque
 methods from the server's thread. State is guarded by self.lock; radio I/O happens outside it.
 """
 
+import hashlib
 import json
 import logging
 import os
 import struct
 import threading
 import time
+import urllib.request
 from dataclasses import dataclass, field
 
 from . import imageenc
@@ -93,6 +95,7 @@ class Core:
         if os.path.exists(self.cfg_path):
             with open(self.cfg_path) as f:
                 self.ap_config.update(json.load(f))
+        self._apply_timezone()
         self.hubs = []
         for i, h in enumerate(hubs):
             hub = Hub(name=h.get("name") or f"hub{i + 1}", spec=h["spec"], channel=int(h.get("channel", 0)))
@@ -100,6 +103,7 @@ class Core:
                                ack_timeout_ms=ack_timeout_ms)
             self.hubs.append(hub)
         self._stop = threading.Event()
+        self.fonts = None
 
     # --- lifecycle -------------------------------------------------------------------------------
 
@@ -128,11 +132,68 @@ class Core:
 
     def _housekeeping(self):
         while not self._stop.wait(5):
+            try:
+                self._idle_requests()
+            except Exception:
+                log.exception("idle requests")
             if self.db.dirty:
                 try:
                     self.db.save()
                 except OSError as e:
                     log.error("saving the tag DB: %s", e)
+
+    # --- sleep: idle requests and quiet hours (contentRunner in contentmanager.cpp) ----------------
+
+    def _apply_timezone(self):
+        tz = self.ap_config.get("timezone") or "UTC0"
+        os.environ["TZ"] = tz
+        time.tzset()
+
+    def is_sleeping(self):
+        """Quiet hours: no updates from sleeptime1 to sleeptime2 (local hours). Equal hours: off."""
+        t1, t2 = int(self.ap_config.get("sleeptime1", 0)), int(self.ap_config.get("sleeptime2", 0))
+        if t1 == t2:
+            return False
+        hour = time.localtime().tm_hour
+        return t1 <= hour < t2 if t1 < t2 else hour >= t1 or hour < t2
+
+    def _minutes_until_wake(self, ts):
+        lt = time.localtime(ts)
+        wake = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, int(self.ap_config.get("sleeptime2", 0)), 0, 0,
+                            0, 0, -1))
+        if wake < ts:
+            wake += 24 * 3600
+        return int(wake - ts) // 60 - 2
+
+    def _idle_requests(self):
+        """prepareIdleReq: shortly before a tag's check-in with nothing queued, tell it how long to sleep."""
+        ts = now()
+        maxsleep = int(self.ap_config.get("maxsleep", 10))
+        if self.ws_clients and int(self.ap_config.get("stopsleep", 1)) == 1:
+            return
+        sleeping = self.is_sleeping()
+        todo = []
+        with self.lock:
+            for t in list(self.db.tags.values()):
+                if not (ts - 10 < t.nextcheckin < ts + 30) or t.pending_idle or self.queues.get(t.mac):
+                    continue
+                minutes = min((t.nextupdate - ts) // 60, maxsleep)
+                if sleeping:
+                    minutes = self._minutes_until_wake(ts)
+                if minutes <= 1:
+                    continue
+                minutes = min(minutes, 0x7FFF)
+                t.pending_idle = minutes * 60
+                t.nextcheckin = ts + t.pending_idle
+                todo.append((t.mac, minutes))
+        for mac, minutes in todo:
+            for hub in self._target_hubs(mac):
+                try:
+                    hub.link.set_pending(v2.mac_bytes(mac), 0, 0, DATATYPE_NOUPDATE, 0, minutes,
+                                         ttl_min=10 + maxsleep)
+                except LinkError as e:
+                    log.warning("%s: idle request for %s failed: %s", hub.name, mac, e)
+            log.debug("%s sleeping %d minutes", mac, minutes)
 
     # --- pending items on disk -------------------------------------------------------------------
 
@@ -502,7 +563,8 @@ class Core:
             self.ws_err(f"no tag type for hwType {t.hwType:02X}")
             return 200, "Ok, saved"
         try:
-            data_type, data = imageenc.encode_jpeg(image_bytes, tt, dither=dither, rotate=t.rotate, tag_fw=t.ver)
+            data_type, data = imageenc.encode_jpeg(image_bytes, tt, dither=dither, rotate=t.rotate, tag_fw=t.ver,
+                                                          invert=t.invert == 1)
         except Exception as e:
             self.ws_err(f"image conversion failed: {e}")
             return 200, "Ok, saved"
@@ -526,6 +588,120 @@ class Core:
         self.ws_log(f"new image: {name}")
         self._queue(mac, Item(data_type=data_type, arg=arg, ver=ver, data=data, next_checkin=next_checkin,
                               filename=name))
+
+    # --- /jsonupload (content mode 19, drawJsonStream) -------------------------------------------
+
+    def json_upload(self, mac, json_text, ttl=0):
+        """Draw a JSON list of elements for the tag and queue it. Returns (status, text)."""
+        import copy
+        from . import jsondraw
+        t = self.db.get(mac)
+        if t is None:
+            return 400, "mac not found in tagDB"
+        try:
+            elements = json.loads(json_text)
+        except ValueError as e:
+            return 400, f"Error: json: {e}"
+        name = f"/current/{mac}.json"
+        with open(os.path.join(self.current_dir, f"{mac}.json"), "w") as f:
+            f.write(json_text)
+        with self.lock:
+            t.modecfgjson = json.dumps({"filename": name, "interval": str(ttl)}, separators=(",", ":"))
+            t.contentMode = 19
+            t.nextupdate = NEVER
+            self.db.dirty = True
+        self.ws_tag(mac)
+        tt = self.tagtypes.get(t.hwType)
+        if tt is None:
+            self.ws_err(f"no tag type for hwType {t.hwType:02X}")
+            return 200, "Ok, saved"
+        if self.fonts is None:
+            self.fonts = jsondraw.Fonts(os.path.join(self.data_dir, "fonts"))
+
+        def load_image(filename):
+            p = os.path.realpath(os.path.join(self.data_dir, filename.lstrip("/")))
+            if not p.startswith(os.path.realpath(self.data_dir) + os.sep) or not os.path.isfile(p):
+                return None
+            with open(p, "rb") as f:
+                return f.read()
+
+        try:
+            img, toggled = jsondraw.render(elements, tt.width, tt.height, self.fonts, image_loader=load_image,
+                                           log=self.ws_err)
+            if toggled:
+                tt = copy.copy(tt)
+                tt.rotatebuffer = 1 - tt.rotatebuffer % 2
+            data_type, data = imageenc.encode(img, tt, dither=2, rotate=t.rotate, tag_fw=t.ver,
+                                              invert=t.invert == 1)
+        except Exception as e:
+            log.exception("jsonupload for %s", mac)
+            self.ws_err(f"json drawing failed: {e}")
+            return 200, "Ok, saved"
+        self.queue_data(mac, data_type, data, imageenc.data_type_arg(lut=t.lut), self.max_sleep(ttl),
+                        f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending")
+        return 200, "Ok, saved"
+
+    # --- tag firmware (the stock UI's "auto update", content mode 5) -----------------------------
+
+    def _fw_info(self):
+        repo = self.ap_config.get("repo") or "OpenEPaperLink/OpenEPaperLink"
+        cached = getattr(self, "_fw_cache", None)
+        if cached and cached[0] == repo and time.monotonic() - cached[1] < 3600:
+            return cached[2]
+        url = f"https://raw.githubusercontent.com/{repo}/master/binaries/Tag/tagotaversions.json"
+        with urllib.request.urlopen(url, timeout=15) as r:
+            info = json.load(r)[0]
+        self._fw_cache = (repo, time.monotonic(), info)
+        return info
+
+    def tag_fw_available(self, mac):
+        """The newest tag firmware for this tag: {"name", "version", "md5"}, or None if its type has none."""
+        t = self.db.get(mac)
+        if t is None:
+            return None
+        e = self._fw_info().get(f"{t.hwType:02X}")
+        if not e:
+            return None
+        sfx = ""
+        if e["type"].startswith("chroma"):
+            variation = int(mac[4:6], 16) >> 5
+            if variation:
+                sfx = f"_{variation}"
+        if "type" + sfx not in e:
+            return None
+        return {"name": e["type" + sfx], "version": int(e["version" + sfx], 16), "md5": e["md5" + sfx].lower()}
+
+    def tag_fw_update(self, mac, data=None, filename=""):
+        """Queue a tag firmware: the given file, or the newest one from the repo. Returns (status, text)."""
+        t = self.db.get(mac)
+        if t is None:
+            return 400, "Error: mac not found"
+        if data is None:
+            try:
+                fw = self.tag_fw_available(mac)
+            except (OSError, ValueError) as e:
+                return 502, f"Error: firmware list: {e}"
+            if fw is None:
+                return 404, f"Error: no firmware known for tag type {t.hwType:02X}"
+            repo = self.ap_config.get("repo") or "OpenEPaperLink/OpenEPaperLink"
+            filename = f"{fw['name']}_{fw['version']:04X}.bin"
+            try:
+                with urllib.request.urlopen(f"https://raw.githubusercontent.com/{repo}/master/binaries/Tag/{filename}",
+                                            timeout=30) as r:
+                    data = r.read()
+            except OSError as e:
+                return 502, f"Error: download of {filename}: {e}"
+            if hashlib.md5(data).hexdigest() != fw["md5"]:
+                return 502, f"Error: {filename} has the wrong MD5"
+        if not data or b"<html" in data[:1024].lower():
+            return 400, "Error: that is not a firmware file"
+        with self.lock:
+            t.contentMode = 5
+            t.modecfgjson = json.dumps({"filename": "/" + filename}, separators=(",", ":"))
+            self.db.dirty = True
+        self.ws_log(f"{mac} firmware update queued: {filename}, {len(data)} bytes")
+        self.queue_data(mac, DATATYPE_FW_UPDATE, data, 0, 0, "/" + filename)
+        return 200, "Ok, firmware update queued"
 
     def tag_command(self, mac, cmd, payload=b""):
         ver, size = struct.unpack("<QI", payload.ljust(12, b"\x00")[:12])
@@ -613,6 +789,7 @@ class Core:
                 self.ap_config[k] = int(v) if k in int_keys else v
         with open(self.cfg_path, "w") as f:
             json.dump(self.ap_config, f, indent=1)
+        self._apply_timezone()
         led = int(self.ap_config.get("led", 127)) & 0xFF
         for hub in self.hubs_up():
             try:

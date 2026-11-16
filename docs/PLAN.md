@@ -302,8 +302,30 @@ OEPL channel plan:
      - **Pending items survive a restart** (16 Nov): `data/pending.json` plus `data/pending/<ver>.bin`, saved on
        every queue change, restored at start, re-announced when each hub comes up. Tested with a restart between
        upload and check-in.
-     - Not yet: content modes other than uploads,
-       `/jsonupload`, firmware OTA.
+     - **Addon 0.3.0** (16 Nov), tested against simulated hubs, not yet on HA:
+       - Per-tag settings (alias, rotate, LUT, invert) in a panel dialog via `/save_cfg`. Invert swaps palette
+         entries 0 and 1 in `imageenc.encode()`, like `spr2color()`.
+       - Quiet hours and time zone: the `timezone` setting sets `TZ` for the addon. `_idle_requests()` ports
+         `prepareIdleReq` from `contentRunner`: 10 s before to 30 s after a tag's expected check-in, with nothing
+         queued, it sends `SET_PENDING` type `NOUPDATE` with `min(nextupdate, maxsleep)` minutes, or until
+         `sleeptime2` minus 2 during quiet hours. Like the stock AP, this is skipped while websocket clients are
+         connected and `stopsleep` is 1, and the HA integration is a websocket client. So with defaults, tags
+         don't get long sleeps while HA is connected.
+       - `/jsonupload` (content mode 19): `oeplhub/jsondraw.py` renders the elements with Pillow (text, textbox,
+         box, rbox, line, triangle, circle, image, rotate). VLW fonts and Signika-SB.ttf are downloaded from
+         upstream `ESP32_AP-Flasher/data/fonts` into `data/fonts` on first use (not vendored, for licensing).
+         VLW placement follows TFT_eSPI. TTF text uses Pillow, so it differs a little from TinyTTF. `image`
+         elements load files from the addon data dir. The preview is wrong for JSON that uses `rotate` 1/3,
+         because it decodes with the tag type's own `rotatebuffer`.
+       - Tag firmware: `GET/POST /api/tag_fw`. It looks up `binaries/Tag/tagotaversions.json` in `repo` (the
+         chroma variation is taken from the MAC, as in `main.js`), downloads the `.bin`, checks its MD5 and
+         queues `DATATYPE_FW_UPDATE`. A manual `.bin` upload is also possible. Content mode is set to 5, as the
+         stock UI does.
+       - `addon/CHANGELOG.md` (HA shows it on update). Bump `version` in `config.yaml` and add an entry for
+         every release.
+     - Not yet: other content modes (clock, weather, …), browser image upload, DB export/import.
+     - **Panel title:** HA only re-reads `panel_title` when it registers the panel. After a change, toggle "Show in
+       sidebar" or restart HA.
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it

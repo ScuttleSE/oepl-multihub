@@ -227,7 +227,7 @@ def zlib_file(header, body):
     return struct.pack("<I", len(raw)) + c.compress(raw) + c.flush()
 
 
-def encode(img, tagtype: TagType, dither=2, rotate=0, tag_fw=0):
+def encode(img, tagtype: TagType, dither=2, rotate=0, tag_fw=0, invert=False):
     """A PIL image to (dataType, file bytes) for this tag type and tag firmware version."""
     w, h = img.size
     rgb = img.convert("RGB")
@@ -237,12 +237,16 @@ def encode(img, tagtype: TagType, dither=2, rotate=0, tag_fw=0):
         data = rgb.getdata()
     pixels = [rgb565(r, g, b) for (r, g, b) in data]
 
-    palette = tagtype.colortable
+    palette = list(tagtype.colortable)
+    exact = [rgb565(*c) for c in palette]
+    if invert and len(palette) >= 2:
+        palette[0], palette[1] = palette[1], palette[0]
+        exact[0], exact[1] = exact[1], exact[0]
     if tagtype.rotatebuffer % 2:
         params_rotate = ((rotate + 3) % 4 + (tagtype.rotatebuffer - 1)) % 4
     else:
         params_rotate = (rotate + tagtype.rotatebuffer) % 4
-    indices, bufw, bufh = quantize(pixels, w, h, palette, dither=dither, rotate=params_rotate)
+    indices, bufw, bufh = quantize(pixels, w, h, palette, dither=dither, rotate=params_rotate, exact=exact)
 
     bpp = tagtype.bpp
     if bpp in (3, 4):

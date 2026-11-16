@@ -220,6 +220,41 @@ class Server:
         im.save(buf, "PNG")
         return buf.getvalue()
 
+    async def jsonupload(self, request):
+        form = await request.post()
+        mac = self.mac_param(form.get("mac"))
+        if mac is None or form.get("json") is None:
+            return web.Response(status=400, text="Missing parameters")
+        try:
+            ttl = int(form.get("ttl") or 0)
+        except ValueError:
+            ttl = 0
+        status, text = await self.run(self.core.json_upload, mac, form["json"], ttl)
+        return web.Response(status=status, text=text)
+
+    async def api_tag_fw(self, request):
+        mac = self.mac_param(request.query.get("mac"))
+        t = self.core.db.get(mac) if mac else None
+        if t is None:
+            return web.json_response({"error": "mac not found"}, status=404)
+        try:
+            fw = await self.run(self.core.tag_fw_available, mac)
+        except (OSError, ValueError) as e:
+            return web.json_response({"current": t.ver, "available": None, "error": str(e)})
+        return web.json_response({"current": t.ver, "available": fw})
+
+    async def api_tag_fw_update(self, request):
+        form = await request.post()
+        mac = self.mac_param(form.get("mac"))
+        if mac is None:
+            return web.Response(status=400, text="Error: mac missing")
+        f = form.get("file")
+        if f is not None and hasattr(f, "file"):
+            status, text = await self.run(self.core.tag_fw_update, mac, f.file.read(), os.path.basename(f.filename))
+        else:
+            status, text = await self.run(self.core.tag_fw_update, mac)
+        return web.Response(status=status, text=text)
+
     async def api_hubs(self, request):
         return web.json_response(self.core.hub_status())
 
@@ -241,6 +276,9 @@ class Server:
             web.get("/tagtypes/{name}", self.tagtype),
             web.get("/api/hubs", self.api_hubs),
             web.get("/api/preview/{mac}", self.api_preview),
+            web.post("/jsonupload", self.jsonupload),
+            web.get("/api/tag_fw", self.api_tag_fw),
+            web.post("/api/tag_fw", self.api_tag_fw_update),
         ])
 
         async def on_startup(app):

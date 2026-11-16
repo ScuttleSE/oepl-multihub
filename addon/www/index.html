@@ -103,6 +103,17 @@
     padding: 12px 20px; border-radius: 4px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 5;
   }
   .toast.show { opacity: 1; }
+  dialog {
+    border: 0; border-radius: 24px; padding: 0; width: min(480px, calc(100vw - 32px));
+    background: var(--card-background-color); color: var(--primary-text-color);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .5); }
+  dialog h2 { font-size: 20px; font-weight: 400; margin: 0; padding: 24px 24px 8px; }
+  dialog .form { padding: 8px 24px; }
+  dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 16px; }
+  .fw { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .fw span { flex: 1; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   table { width: 100%; border-collapse: collapse; }
   td { padding: 4px 0; vertical-align: top; }
   td:first-child { color: var(--secondary-text-color); width: 45%; }
@@ -138,16 +149,62 @@
         <label><span>Tag lock (stops tags from joining other access points)</span>
           <select name="lock"><option value="0">Off</option><option value="1">Lock new tags</option>
             <option value="2">Lock all tags</option></select></label>
+        <label><span>Time zone (POSIX TZ string)</span>
+          <input name="timezone" list="tzlist" spellcheck="false"></label>
+        <datalist id="tzlist">
+          <option value="UTC0">UTC</option>
+          <option value="GMT0BST,M3.5.0/1,M10.5.0">London, Dublin, Lisbon</option>
+          <option value="CET-1CEST,M3.5.0,M10.5.0/3">Central Europe (Stockholm, Berlin, Paris, …)</option>
+          <option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Eastern Europe (Helsinki, Athens, …)</option>
+          <option value="EST5EDT,M3.2.0,M11.1.0">US Eastern</option>
+          <option value="CST6CDT,M3.2.0,M11.1.0">US Central</option>
+          <option value="MST7MDT,M3.2.0,M11.1.0">US Mountain</option>
+          <option value="PST8PDT,M3.2.0,M11.1.0">US Pacific</option>
+          <option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Sydney, Melbourne</option>
+          <option value="JST-9">Japan</option>
+        </datalist>
+        <div class="row2">
+          <label><span>Quiet hours from (no updates)</span><select name="sleeptime1"></select></label>
+          <label><span>Quiet hours until</span><select name="sleeptime2"></select></label>
+        </div>
         <label><span>Hub LED brightness</span>
           <select name="led"><option value="0">Off</option><option value="31">Low</option>
             <option value="63">Medium</option><option value="127">High</option><option value="255">Full</option></select></label>
         <div><button class="raised" type="submit">Save</button></div>
       </form>
+      <p class="small muted">Quiet hours: tags sleep through them and update afterwards. Set both to the same hour to
+        turn them off.</p>
       <p class="small muted">The hub list is set in the addon's Configuration tab in Home Assistant.</p>
     </div></div>
   </section>
   <section id="tab-log" hidden><div class="card"><div id="log"></div></div></section>
 </main>
+<dialog id="tagdlg">
+  <form method="dialog" id="tagform">
+    <h2 id="tagdlg-title"></h2>
+    <div class="form">
+      <label><span>Name</span><input name="alias"></label>
+      <div class="row2">
+        <label><span>Rotate image</span><select name="rotate"></select></label>
+        <label><span>Refresh mode (LUT)</span><select name="lut"></select></label>
+      </div>
+      <label><span>Invert colours</span>
+        <select name="invert"><option value="0">Off</option><option value="1">On</option></select></label>
+      <p class="small muted" style="margin:0">Rotation and inversion apply to the next image.</p>
+      <label><span>Tag firmware</span></label>
+      <div class="fw" style="margin-top:-12px">
+        <span id="fwinfo" class="small">…</span>
+        <button class="flat" type="button" id="fwupdate" hidden>Update</button>
+        <button class="flat" type="button" id="fwfile">Upload file</button>
+        <input type="file" id="fwfileinput" accept=".bin" hidden>
+      </div>
+    </div>
+    <div class="buttons">
+      <button class="flat" value="cancel" formnovalidate>Cancel</button>
+      <button class="raised" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -276,7 +333,7 @@ function tagCard(t) {
       </div>
     </div>
     <div class="actions">
-      <button class="flat" data-act="rename">Rename</button>
+      <button class="flat" data-act="settings">Settings</button>
       <button class="flat" data-act="refresh">Refresh</button>
       <button class="flat" data-act="ledflash">Flash LED</button>
       ${t.pending ? `<button class="flat" data-act="clear">Clear pending</button>` : ""}
@@ -314,11 +371,7 @@ $("#tags").addEventListener("click", async (e) => {
   const mac = b.closest(".card").dataset.mac;
   const t = tags.get(mac);
   const act = b.dataset.act;
-  if (act === "rename") {
-    const alias = prompt("Name for " + mac, t.alias || "");
-    if (alias === null) return;
-    return post("save_cfg", { mac, alias });
-  }
+  if (act === "settings") return openTagDialog(t);
   if (act === "del" && !confirm(`Delete ${t.alias || mac} from the database? It comes back when it checks in again.`)) return;
   if ((act === "reboot" || act === "scan") && !confirm(`Send "${act}" to ${t.alias || mac}?`)) return;
   const r = await post("tag_cmd", { mac, cmd: act });
@@ -350,6 +403,83 @@ async function loadTags() {
   for (const [k, v] of all) tags.set(k, v);
   renderTags();
 }
+
+// --- tag settings dialog ---
+const tagTypes = new Map();
+async function tagType(hw) {
+  if (!tagTypes.has(hw)) {
+    const r = await fetch(url("tagtypes/" + hw.toString(16).padStart(2, "0").toUpperCase() + ".json"));
+    tagTypes.set(hw, r.ok ? await r.json() : null);
+  }
+  return tagTypes.get(hw);
+}
+function setOptions(sel, opts, value) {
+  sel.innerHTML = "";
+  for (const [v, text] of opts) sel.add(new Option(text, v));
+  if (![...sel.options].some((o) => o.value === String(value))) sel.add(new Option(String(value), value));
+  sel.value = String(value);
+}
+let dlgMac = null;
+async function openTagDialog(t) {
+  dlgMac = t.mac;
+  const f = $("#tagform");
+  $("#tagdlg-title").textContent = t.alias || t.mac;
+  f.alias.value = t.alias || "";
+  f.invert.value = String(t.invert || 0);
+  const tt = await tagType(t.hwType);
+  const square = tt && tt.width === tt.height;
+  setOptions(f.rotate, [0, 1, 2, 3].filter((i) => i === 0 || i === 2 || square).map((i) => [i, i * 90 + " degrees"]), t.rotate || 0);
+  setOptions(f.lut, tt && tt.shortlut > 0
+    ? [[0, "Auto"], [1, "Always full refresh"], [2, "Fast (no reds)"], [3, "Fastest (ghosting!)"]]
+    : [[0, "Always full refresh"]], t.lut || 0);
+  $("#fwinfo").textContent = "Checking…";
+  $("#fwupdate").hidden = true;
+  $("#tagdlg").returnValue = "";
+  $("#tagdlg").showModal();
+  try {
+    const r = await (await fetch(url("api/tag_fw?mac=" + t.mac))).json();
+    if (dlgMac !== t.mac) return;
+    const cur = `Version ${r.current} (0x${(r.current || 0).toString(16)})`;
+    if (r.available) {
+      const a = r.available;
+      const newer = a.version > r.current;
+      $("#fwinfo").textContent = `${cur}. Latest: ${a.version} (0x${a.version.toString(16)})` + (newer ? "" : ", up to date.");
+      $("#fwupdate").hidden = false;
+      $("#fwupdate").textContent = newer ? "Update" : a.version < r.current ? "Downgrade" : "Reinstall";
+    } else {
+      $("#fwinfo").textContent = cur + (r.error ? `. Firmware list unavailable: ${r.error}` : ". No firmware known for this tag type.");
+    }
+  } catch (e) {
+    $("#fwinfo").textContent = "Firmware info unavailable";
+  }
+}
+const FW_WARNING = "Every firmware update comes with a risk of bricking the tag. A bricked tag can only be " +
+  "recovered with a tag flasher. Only update if you need the new features.\n\nContinue?";
+$("#fwupdate").addEventListener("click", async () => {
+  if (!confirm(FW_WARNING)) return;
+  $("#fwinfo").textContent = "Downloading…";
+  await post("api/tag_fw", { mac: dlgMac });
+  $("#tagdlg").close();
+});
+$("#fwfile").addEventListener("click", () => $("#fwfileinput").click());
+$("#fwfileinput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file || !confirm(`Send ${file.name} to this tag?\n\nThere is no check that this file fits the tag. ` + FW_WARNING)) return;
+  const fd = new FormData();
+  fd.append("mac", dlgMac);
+  fd.append("file", file, file.name);
+  try {
+    const r = await fetch(url("api/tag_fw"), { method: "POST", body: fd });
+    toast(await r.text());
+  } catch (err) { toast("Failed: " + err.message); }
+  $("#tagdlg").close();
+});
+$("#tagdlg").addEventListener("close", () => {
+  if ($("#tagdlg").returnValue !== "save") return;
+  const f = $("#tagform");
+  post("save_cfg", { mac: dlgMac, alias: f.alias.value, rotate: f.rotate.value, lut: f.lut.value, invert: f.invert.value });
+});
 
 // --- hubs ---
 function hubCard(h) {
@@ -387,6 +517,10 @@ function updateSummary() {
 }
 
 // --- settings ---
+for (const name of ["sleeptime1", "sleeptime2"]) {
+  const sel = $("#apform").elements[name];
+  for (let h = 0; h < 24; h++) sel.add(new Option(String(h).padStart(2, "0") + ":00", h));
+}
 async function loadSettings() {
   const c = await (await fetch(url("get_ap_config"))).json();
   for (const el of $("#apform").elements) {
