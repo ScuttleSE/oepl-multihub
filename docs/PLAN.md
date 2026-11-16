@@ -189,6 +189,9 @@ OEPL channel plan:
   Off-the-shelf version: **Espressif ESP Thread Border Router / Zigbee Gateway board** (ESP32-S3 + ESP32-H2, UART,
   H2 reset/boot wired to the S3, PTA coex wires, optional Ethernet daughter board, about €15). Upstream has an H2
   radio build (`upstream/ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP`).
+  **On hold** until the C6 coexistence test (step 5) is done. Where to buy (Tinytronics, €15.50, in stock 16 Nov):
+  https://www.tinytronics.nl/en/development-boards/microcontroller-boards/with-bluetooth/espressif-esp32-s3-esp32-h2-thread-zigbee-gateway-module
+  Work needed if used: S3 bridge firmware, and our host-link changes ported to the H2 build (no Wi-Fi on the H2).
 - **Simplest test setup:** one C6 on USB to the dev PC or the HA box, stock firmware, host link over USB serial.
 
 ## Tags
