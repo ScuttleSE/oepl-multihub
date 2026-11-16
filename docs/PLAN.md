@@ -183,6 +183,9 @@ OEPL channel plan:
   ESPHome `stream_server`), wired to a C6 running the stock firmware.
   - Wiring: TX/RX crossed, GND, plus optionally C6 EN for reset and GPIO9 for boot.
   - The addon doesn't change. It's the same byte stream, but the bridge must handle the 2 Mbaud switch.
+- **Ready-made two-chip option:** an OEPL-style ESP32-S3 + ESP32-C6 AP board (Mini AP v3/v4 and similar). The S3 does
+  Wi-Fi with its own radio, the C6 listens full time. It needs a bridge firmware for the S3 (not built yet).
+  RW612 and IW612 were looked at and rejected: shared 2.4 GHz path, and porting or closed firmware.
 - **Simplest test setup:** one C6 on USB to the dev PC or the HA box, stock firmware, host link over USB serial.
 
 ## Tags
