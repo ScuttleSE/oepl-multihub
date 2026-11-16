@@ -126,6 +126,10 @@ OEPL channel plan:
 - **Hubs:** 2× Heemol "ESP32-C6 Mini" (Super Mini style, ESP32-C6FH4 with 4 MB flash in the package, small ceramic
   antenna, USB-C on the native USB, BOOT and RST buttons, TX/RX labelled, probably GPIO16/17). Arriving about 19 Nov 2026.
   The ceramic antenna means short range, a room or two per hub.
+  - Chip spec: 160 MHz RISC-V, 512 KB HP-SRAM, 16 KB LP-SRAM, 4 MB in-package flash. The Wi-Fi build uses
+    205 KB of the 452 KB DIRAM statically, which leaves about 247 KB for heap (Wi-Fi needs some of that at runtime).
+    The firmware's pins (USB 12/13, LEDs 22/23, default UART 2/3, CC1101 probe 0/1/4–7) aren't among the pins used
+    by the in-package flash.
 - **Fallback if coexistence is bad:** a plain ESP32 (several spares available) as a UART⇄TCP bridge (for example
   ESPHome `stream_server`), wired to a C6 running the stock firmware.
   - Wiring: TX/RX crossed, GND, plus optionally C6 EN for reset and GPIO9 for boot.
