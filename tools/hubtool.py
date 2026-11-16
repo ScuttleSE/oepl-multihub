@@ -153,7 +153,7 @@ def cmd_push(args):
 
 def cmd_fakehub(args):
     from oeplhub.fakehub import FakeRadio, FakeTag
-    tags = [FakeTag(m, interval=args.interval) for m in (args.tag or ["8C73DAFFFE5D531B"])]
+    tags = [FakeTag(m, hw_type=args.hw, interval=args.interval) for m in (args.tag or ["8C73DAFFFE5D531B"])]
     FakeRadio(tags, loss=args.loss, jitter_ms=args.jitter).serve(port=args.port)
 
 
@@ -189,6 +189,7 @@ def main():
     f = sub.add_parser("fakehub")
     f.add_argument("--port", type=int, default=6639)
     f.add_argument("--tag", action="append", help="MAC, 16 hex digits (repeatable)")
+    f.add_argument("--hw", type=lambda s: int(s, 0), default=0x94, help="hwType of the fake tags")
     f.add_argument("--interval", type=float, default=5.0, help="seconds between check-ins")
     f.add_argument("--loss", type=float, default=0.0, help="frame loss 0..1, each direction")
     f.add_argument("--jitter", type=int, default=0, help="max extra delay per frame, ms")
