@@ -185,7 +185,8 @@ OEPL channel plan:
   - The addon doesn't change. It's the same byte stream, but the bridge must handle the 2 Mbaud switch.
 - **Ready-made two-chip option:** an OEPL-style ESP32-S3 + ESP32-C6 AP board (Mini AP v3/v4 and similar). The S3 does
   Wi-Fi with its own radio, the C6 listens full time. It needs a bridge firmware for the S3 (not built yet).
-  RW612 and IW612 were looked at and rejected: shared 2.4 GHz path, and porting or closed firmware.
+  RW612 and IW612 were looked at; IW612 rejected (companion chip, closed firmware). RW612 kept as a later option,
+  see "RW612 notes" below.
   Off-the-shelf version: **Espressif ESP Thread Border Router / Zigbee Gateway board** (ESP32-S3 + ESP32-H2, UART,
   H2 reset/boot wired to the S3, PTA coex wires, optional Ethernet daughter board, about €15). Upstream has an H2
   radio build (`upstream/ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP`).
@@ -193,6 +194,23 @@ OEPL channel plan:
   https://www.tinytronics.nl/en/development-boards/microcontroller-boards/with-bluetooth/espressif-esp32-s3-esp32-h2-thread-zigbee-gateway-module
   Work needed if used: S3 bridge firmware, and our host-link changes ported to the H2 build (no Wi-Fi on the H2).
 - **Simplest test setup:** one C6 on USB to the dev PC or the HA box, stock firmware, host link over USB serial.
+
+## RW612 notes (researched 16 Nov 2026, on hold)
+
+- NXP RW612: Cortex-M33 260 MHz, 1.2 MB SRAM, Wi-Fi 6 on 2.4 and 5 GHz, plus a second radio for Bluetooth LE or
+  802.15.4. Ethernet (RMII) on chip.
+- **Coexistence** (datasheet section 6, AN14121): a hardware arbiter decides who uses the radio, packet by packet.
+  - One shared antenna: Wi-Fi 2.4 GHz and 802.15.4 are never active at the same time. Same problem as the C6.
+  - With Wi-Fi on **5 GHz** (diplexer or a second antenna), 802.15.4 and Wi-Fi run fully at the same time.
+    The FRDM-RW612 board has the diplexer, so this works with 5 GHz Wi-Fi.
+  - Ethernet avoids the question completely.
+- **Software risk:** the 802.15.4 radio runs a closed NXP firmware blob (`rw61x_sb_ble_15d4_combo`). The app talks
+  to it as an OpenThread RCP (Spinel over an internal HDLC link). There is no direct register access. Raw frame
+  TX/RX, channel and auto-ACK should be possible through Spinel, but it's unverified whether this is enough for the
+  OEPL protocol. Zephyr supports it as "RCP host" (`samples/net/openthread/shell`, `prj-ot-host.conf`).
+  The OEPL radio code would need a port from ESP-IDF to Zephyr or the MCUXpresso SDK.
+- **Hardware:** FRDM-RW612 dev board (large, has Ethernet and a debugger). Modules: u-blox IRIS-W101/W106
+  (14.6 × 16.8 / 20.9 mm), Murata Type 2FR (12 × 11 mm), CEL CMP4612. No small hobby board found yet.
 
 ## Tags
 
