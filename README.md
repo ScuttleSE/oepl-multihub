@@ -1,0 +1,194 @@
+# OEPL hub: ESP32-C6 Wi-Fi radios + Home Assistant addon
+
+Writeup and handover, 16 Nov 2026. This repo starts empty apart from this file and `AGENTS.md`.
+
+## Goal
+
+Replace the OpenEPaperLink (OEPL) access point with:
+
+1. One or more **hubs**. Each hub is a single **ESP32-C6** running the stock OEPL C6 radio firmware. The only change
+   is that its host link goes over TCP on Wi-Fi instead of UART.
+2. A **Home Assistant addon** that does everything the AP's ESP32-S3 "brain" does today: tag database,
+   image encoding, data and block serving, web UI and API.
+
+Constraints:
+- **Tags stay on stock OEPL firmware.** Over the air, a hub must look exactly like a normal OEPL AP radio.
+- **Several hubs for coverage.** One addon owns all hubs and keeps one tag database.
+- The hub firmware change should be clean enough to offer upstream as a build option.
+
+## Background: how a stock OEPL AP works
+
+Upstream: https://github.com/OpenEPaperLink/OpenEPaperLink (last checked at `8395ac8`, master).
+
+```
+tags ──802.15.4── radio chip (C6/H2) ──UART── ESP32-S3 (the "AP": logic, web UI, ~18k lines C++)
+```
+
+- **Radio firmware:** `ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/` (ESP-IDF, about 3,300 lines in `main/`).
+  Prebuilt in `binaries/ESP32-C6/` (bootloader @0x0, partitions @0x8000, app @0x10000; 4 MB flash).
+- **S3 firmware:** `ESP32_AP-Flasher/`. The parts our addon must re-implement:
+  - `src/serialap.cpp`, `src/v2transport.cpp`: the radio link
+  - `src/newproto.cpp`, `src/pendingupload.cpp`: pending data, block serving, check-in handling
+  - `src/tag_db.cpp`: tag database
+  - `src/makeimage.cpp`, `src/g5/`: image encoding (and G5 compression)
+  - `src/web.cpp`: the HTTP and websocket API that the HA integration and web UI use
+  - `src/contentmanager.cpp`: built-in content (weather, calendar, …). Low priority, since HA provides images.
+- **Tag types:** `resources/tagtypes/*.json` (resolution, colours, bpp, layout per hwid).
+- **Repo helpers worth reading:** `miscellaneous/ap-tool/aptool.py` drives an AP over its web API,
+  `miscellaneous/virtual_tags/`.
+
+### The radio link (protocol v2): the important part
+
+Defined in **`oepl-radio-v2.h`** (shared header, about 360 lines, well commented).
+Radio side: `main/v2link.c`, `main/main.c`. S3 side: `src/v2transport.cpp`.
+
+- **Startup:**
+  1. The link starts with ASCII at 115200: host sends `RDY?` and `NFO?`, and the radio answers `ACK>`, info lines,
+     and `CAP>xxxx` with its capability bits.
+  2. Host sends `FRM1`, the radio sends `ACK>`, and both wait 20 ms (`V2_SWITCH_DELAY_MS`).
+  3. Both switch to 2 Mbaud binary frames (`uart_switch_speed(V2_BAUD)` in `main.c` `processAscii()`). The first frame is `HELLO`.
+- The C6 firmware is **v2-only** after startup. The old ASCII protocol (`legacytransport.cpp`) is not supported, so ignore it.
+- **Frames:** `COBS(header{type,seq,flags} | payload | crc16) 0x00`, little-endian, packed.
+  - Every non-response frame gets exactly one response (`ACK`, `NAK`, `HELLO_REPLY` or `STATUS`).
+  - **ACK timeout: 30 ms**, with **3 retries** (same seq, flagged as a retransmit). The receiver drops duplicate seqs.
+  - **Heartbeat: 1000 ms.**
+- **Host → radio:** `HELLO`, `HEARTBEAT`, `SET_CONFIG` (802.15.4 channel, tx power, lock mode, LED),
+  `SET_PENDING`, `CANCEL_PENDING`, `DATA_CHUNK` (≤240 B, window of 4), `DATA_DROP`, `GET_STATS`,
+  `ALLOW_CLEAR`, `ALLOW_ADD`, `ALLOW_REMOVE`.
+- **Radio → host:** `CHECKIN`, `DATA_NEEDED`, `BLOCK_SERVED`, `XFER_COMPLETE`, `XFER_TIMEOUT`, `TAG_RETURN_DATA`, `LOG`.
+- **Block cache (`V2_CAP_BLOCK_CACHE`):**
+  1. With `V2_PENDING_DATA_FOLLOWS`, the host pushes the whole image to the radio as `DATA_CHUNK`s up front.
+  2. The radio then serves the tag's 4 KB block requests **locally**, without asking the host.
+  
+  This is why Wi-Fi latency should hardly matter: the tag never waits on a network round trip.
+- **Allow-list and lock (`V2_CAP_ALLOW_LIST`):** the radio can be told to answer only listed tags.
+  This could help with multiple hubs (see below).
+
+### Over TCP instead of UART
+
+- On the C6, all host I/O goes through `main/second_uart.c`:
+  - `init_second_uart()`
+  - `uartTx()`, `uartWrite()`, `uartRead()`
+  - `uartFlushInput()`
+  - `uart_switch_speed()`
+  
+  There is also one direct `uart_wait_tx_done(1, …)` call in `main.c` `processAscii()`.
+- Plan: add `main/wifi_link.c` with the same functions backed by a **single-client TCP server**, chosen with a Kconfig
+  option (`OEPL_HOST_LINK_UART` / `OEPL_HOST_LINK_WIFI`):
+  - **Baud switch:** `uart_switch_speed()` does nothing, and the host simply continues with frames after `FRM1`/`ACK>`.
+  - **`uart_wait_tx_done` call:** needs a guard or an equivalent.
+  - **Wi-Fi:** STA mode with `WIFI_PS_NONE`. mDNS name `oepl-hub-N.local`, TCP port **6639**.
+  - **Debug output:** stays on the USB console.
+  - **Client disconnect:** the radio should behave as after a host restart. Check what v2link does on a new `HELLO`.
+- Concerns to verify:
+  - **30 ms ACK timeout:** Wi-Fi jitter will cause retransmits. Dedup by seq makes them harmless, but the host's
+    retransmit logic must be tolerant. If needed, raise the timeout for the TCP build only.
+  - **Missed heartbeats:** what does the radio do when they stop? Check `v2link.c`.
+  - **Coexistence:** Wi-Fi and 802.15.4 share the C6's single 2.4 GHz radio (time-sliced, ESP-IDF coex).
+    The risk is missed tag frames. Test it.
+
+## Multiple hubs
+
+Stock OEPL already supports multiple APs, and **tags roam on their own**:
+- The radio firmware offers channels `{11, 15, 20, 25, 26, 27}` (`main.c` `channelList`).
+  The host sets a hub's channel with `SET_CONFIG`.
+- The tag firmware scans all channels at boot and joins one AP. After several missed check-ins it rescans
+  (`enableScanForAPAfterTimeout`, on by default). Tags can't be pinned to a hub without changing tag firmware, which we
+  avoid.
+- How the tag ranks APs when it hears more than one isn't verified yet (RSSI/LQI?). It's in the tag firmware's radio code,
+  https://github.com/OpenEPaperLink/Tag_FW_EFR32xG22 (`oepl_radio.c`, `start_scan`).
+
+Addon behaviour:
+- One TCP connection per hub (hubs listed in the addon config). Give each hub a distinct channel at connect.
+- Track `tag → hub` from `CHECKIN` events.
+- Send `SET_PENDING` and the data only to the tag's current hub. If a tag hasn't been seen yet, send it to all hubs.
+- **Roaming:** when a tag shows up on another hub, send `CANCEL_PENDING` on the old hub and re-send to the new one.
+- **Hub reconnect:** re-send all pending data for that hub.
+- Unlike stock multi-AP setups (`udp.cpp` syncs tag databases between APs), there's one database, so no sync is needed.
+
+## Radio environment (the user's home, read 16 Nov 2026)
+
+| What | Channel | Frequency |
+|---|---|---|
+| Wi-Fi UniFi U6 Lite | 6, 20 MHz | 2427–2447 MHz |
+| Wi-Fi UniFi U7 Pro XG | 11, 20 MHz | 2452–2472 MHz |
+| Zigbee (Zigbee2MQTT) | 802.15.4 ch 11 | 2405 MHz |
+| Thread (`ha-thread-7d11`, SLZB-06P7) | 802.15.4 ch 15 | 2425 MHz |
+
+OEPL channel plan:
+- 11 and 15 are taken by Zigbee and Thread. 20 (2450 MHz) sits between Wi-Fi 6 and 11, so avoid it.
+- **Hub 1: ch 26 (2480 MHz).** **Hub 2: ch 25 (2475 MHz)**, about 3 MHz above Wi-Fi 11, so watch it.
+- Ideally the hubs associate with the U6 Lite (Wi-Fi ch 6), farther from 25 and 26.
+- The SLZB-06P7 (Thread RCP) already uses TCP port 6638, so the hubs use **6639**.
+
+## Hardware
+
+- **Hubs:** 2× Heemol "ESP32-C6 Mini" (Super Mini style, ESP32-C6FH4 with 4 MB flash in the package, small ceramic
+  antenna, USB-C on the native USB, BOOT and RST buttons, TX/RX labelled, probably GPIO16/17). Arriving about 19 Nov 2026.
+  The ceramic antenna means short range, a room or two per hub.
+- **Fallback if coexistence is bad:** a plain ESP32 (several spares available) as a UART⇄TCP bridge (for example
+  ESPHome `stream_server`), wired to a C6 running the stock firmware.
+  - Wiring: TX/RX crossed, GND, plus optionally C6 EN for reset and GPIO9 for boot.
+  - The addon doesn't change. It's the same byte stream, but the bridge must handle the 2 Mbaud switch.
+- **Simplest test setup:** one C6 on USB to the dev PC or the HA box, stock firmware, host link over USB serial.
+
+## Tags
+
+- **Main test tags:** SoluM EL058F5W4C (M3 5.85" BWRY, 792x272, two cascaded JD controllers), on OEPL tag firmware.
+  - Support for them is upstream-pending:
+    - Tag firmware: https://github.com/OpenEPaperLink/Tag_FW_EFR32xG22/pull/49
+    - Tag type `94.json` (hwid 0x94, `usetemplate` 65): https://github.com/OpenEPaperLink/OpenEPaperLink/pull/638
+  - Image data: 2 bpp, 4 colours (0 black, 1 white, 2 yellow, 3 red). The panel needs no special pixel reordering
+    from the host on OEPL. The tag firmware handles that.
+- **Tag 1, MAC `EF70A4D777DF`:** debug-unlocked, on OEPL. Use it for tests.
+- More OEPL tags work as long as their tagtype JSON exists.
+
+## Toolchain
+
+- **C6 firmware:** ESP-IDF **v5.5.5**, as in OEPL CI (`.github/workflows/release.yml`, `espressif/esp-idf-ci-action@v1`).
+  Not installed yet. Choose one:
+  - (a) local install inside this repo's `toolchain/` (git-ignored), or
+  - (b) build with GitHub Actions using the same CI action.
+- **Flashing:** `esptool.py` is installed on the dev PC.
+- **Host side:** Python, standard library only where possible. Note that the addon ships as a Docker image, so it can
+  have dependencies, but keep them minimal.
+- **OEPL source:** clone upstream rather than copying it in. Work on a fork branch of
+  https://github.com/OpenEPaperLink/OpenEPaperLink (the user's fork: https://github.com/ScuttleSE/OpenEPaperLink).
+
+## Plan
+
+1. [ ] **Toolchain:** choose (a) or (b), then build the stock C6 radio firmware unchanged and flash a C6.
+   - Chose (a). ESP-IDF v5.5.5 is in `toolchain/` (`IDF_TOOLS_PATH=toolchain/.espressif`, Python 3.14).
+     The fork is cloned at `upstream/` (git-ignored). The stock C6 build works. Flashing waits for the boards (~19 Nov).
+2. [ ] **`hubtool.py` over USB serial** (stock firmware, no Wi-Fi yet):
+   - ASCII startup, `FRM1`, 2 Mbaud, v2 frames (COBS, CRC16, seq, ACK and retries, heartbeat)
+   - `SET_CONFIG` the channel
+   - log `CHECKIN`s from tag 1
+   
+   Design it for several hubs from the start (one link object per hub).
+3. [ ] **Push one image** to tag 1: `SET_PENDING` with `DATA_FOLLOWS`, then `DATA_CHUNK`s, and wait for `XFER_COMPLETE`.
+   Use `94.json` for the format. Check against `newproto.cpp` and `v2transport.cpp` (the dataType, the image header, and
+   whether G5 or raw is used).
+4. [ ] **C6 firmware Wi-Fi transport** (`wifi_link.c`, Kconfig switch, mDNS, power-save off). Point `hubtool.py` at
+   `oepl-hub-1.local:6639` and repeat steps 2–3.
+5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
+   If it's bad, use the ESP32-bridge fallback.
+6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
+   other hub, and gets its pending image.
+7. [ ] **Addon:**
+   - tag DB, kept in `/data`
+   - encoding from the official tagtype JSONs
+   - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration and the stock
+     `wwwroot/` UI work against it
+   - HA addon packaging: `config.yaml`, `Dockerfile`, ingress
+8. [ ] **Later:** tag OTA (same block mechanism), C6 radio OTA over Wi-Fi, content modes, an upstream PR for the Wi-Fi
+   transport.
+
+## Open questions
+
+- Radio behaviour on host loss: missed heartbeats, TCP drop, a second `HELLO`.
+- Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?
+- How do tags rank multiple APs during a scan?
+- Exact image payload format and dataType for the tags: check `newproto.cpp` and `makeimage.cpp`.
+- Which parts of the stock web API does the official HA integration actually use?
+  This decides the minimum API surface.
