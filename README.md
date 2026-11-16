@@ -316,6 +316,9 @@ Notes:
   `nextupdate`, `nextcheckin`, `pending`, `hash`, `contentMode`, `modecfgjson`, `rotate`, `lut`, `wakeupReason`,
   `capabilities`, `isexternal`, `updatecount`, `boot_count`, `checkin_count`, `block_requests`, `runtime`.
 - All hubs appear to HA as **one AP**, so HA doesn't need to know there are several hubs.
+- **The integration supports only one AP:** every action goes to the first non-BLE config entry
+  (`get_hub_from_hass` in `util.py`). So the addon must replace the stock AP's entry rather than run beside it. To
+  test next to a stock AP, disable the stock AP's entry first.
 - **Real samples** from the running stock AP (`192.168.50.205`, S3 + C6, fw 3.0, 6 tags) are in `docs/ap-samples/`:
   `sysinfo`, `get_ap_config`, `get_db?pos=0` and 70 s of websocket traffic (SSID redacted).
   - `sys` is sent every ~5 s. `lowbattcount` and `timeoutcount` are only in some of them.
