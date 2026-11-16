@@ -299,7 +299,10 @@ OEPL channel plan:
      - **Type 0x94 can't be drawn from HA yet:** the integration only gets tag types from upstream GitHub `master`
        (`tag_types.py`), and `94.json` waits for PR #638. Until then HA reports "Unexpected error getting tag type
        … 148". The test used `--hw 0x41`.
-     - Not yet: pending items survive a restart (they are kept in memory only), content modes other than uploads,
+     - **Pending items survive a restart** (16 Nov): `data/pending.json` plus `data/pending/<ver>.bin`, saved on
+       every queue change, restored at start, re-announced when each hub comes up. Tested with a restart between
+       upload and check-in.
+     - Not yet: content modes other than uploads,
        `/jsonupload`, firmware OTA.
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
