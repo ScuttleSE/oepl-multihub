@@ -160,6 +160,13 @@ OEPL channel plan:
 1. [ ] **Toolchain:** choose (a) or (b), then build the stock C6 radio firmware unchanged and flash a C6.
    - Chose (a). ESP-IDF v5.5.5 is in `toolchain/` (`IDF_TOOLS_PATH=toolchain/.espressif`, Python 3.14).
      The fork is cloned at `upstream/` (git-ignored). The stock C6 build works. Flashing waits for the boards (~19 Nov).
+   - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
+     stock) / `OEPL_HOST_LINK_USB` (native USB Serial/JTAG, new `main/host_usb.c`). Uses `uartWaitTxDone()` instead of
+     the direct `uart_wait_tx_done` call. In the USB build the debug console is on UART0 only. Build in
+     `ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP`:
+     `idf.py -B build-usb -D SDKCONFIG=sdkconfig.usb -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-usb" build`.
+     Both builds compile. The Wi-Fi option (`OEPL_HOST_LINK_WIFI`) goes into the same choice later.
+   - Watch out: on the USB build the host must not reset the chip through DTR/RTS when it opens the port.
 2. [ ] **`hubtool.py` over USB serial** (stock firmware, no Wi-Fi yet):
    - ASCII startup, `FRM1`, 2 Mbaud, v2 frames (COBS, CRC16, seq, ACK and retries, heartbeat)
    - `SET_CONFIG` the channel
