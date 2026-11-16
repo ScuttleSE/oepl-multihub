@@ -202,6 +202,10 @@ OEPL channel plan:
      - The integration's default dither is ordered (2). The AP decodes JPEG with TJpgDec, so pixels may differ
        slightly from Pillow. Byte-identical files aren't expected.
    - Open: read tag 1's firmware version from a real check-in (that decides zlib).
+   - **Checked against the running stock AP** (16 Nov): tag 1 reports fw `43` (0x2B), `imgtype 48` (0x30 ZLIB).
+     Its current file (`docs/ap-samples/tag1-8C73DAFFFE5D531B.raw`) has the same structure as our encoder's output:
+     size 53862, zlib header `48 C7`, inner header `06 1803 1001 02`, and `hash` = MD5[:8]. There was no pixel
+     comparison, because the source JPEG is gone from the AP.
 4. [ ] **C6 firmware Wi-Fi transport** (`wifi_link.c`, Kconfig switch, mDNS, power-save off). Point `hubtool.py` at
    `oepl-hub-1.local:6639` and repeat steps 2–3.
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
@@ -273,6 +277,14 @@ Notes:
   `nextupdate`, `nextcheckin`, `pending`, `hash`, `contentMode`, `modecfgjson`, `rotate`, `lut`, `wakeupReason`,
   `capabilities`, `isexternal`, `updatecount`, `boot_count`, `checkin_count`, `block_requests`, `runtime`.
 - All hubs appear to HA as **one AP**, so HA doesn't need to know there are several hubs.
+- **Real samples** from the running stock AP (`192.168.50.205`, S3 + C6, fw 3.0, 6 tags) are in `docs/ap-samples/`:
+  `sysinfo`, `get_ap_config`, `get_db?pos=0` and 70 s of websocket traffic (SSID redacted).
+  - `sys` is sent every ~5 s. `lowbattcount` and `timeoutcount` are only in some of them.
+  - `tags` is sent on every check-in with the full tag record (the same fields as `get_db`, plus `apip`,
+    `invert`, `updatelast`, `imgtype`).
+  - `get_db` returned only `{"tags": [...]}` for 6 tags, so there is no continuation key with a small DB.
+    Check `web.cpp` for paging.
+- The current AP runs on **802.15.4 channel 11**, the same as Zigbee. Expect the new hubs on 25 and 26 to do better.
 
 ## Open questions
 
