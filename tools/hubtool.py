@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon"))
 
 from oeplhub import v2proto as v2  # noqa: E402
 from oeplhub.link import HubLink, LinkError  # noqa: E402

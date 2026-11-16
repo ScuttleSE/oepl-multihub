@@ -1,0 +1,28 @@
+name: OEPL multihub
+version: "0.1.0"
+slug: oepl_multihub
+description: OpenEPaperLink access point with ESP32-C6 radio hubs
+url: https://github.com/ScuttleSE/oepl-multihub
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:tag-text
+panel_title: OEPL
+ports:
+  8080/tcp: 80
+ports_description:
+  8080/tcp: OEPL API for the OpenEPaperLink integration
+uart: true
+usb: true
+options:
+  hubs: []
+schema:
+  hubs:
+    - spec: str
+      channel: int(0,26)
+  verbose: bool?

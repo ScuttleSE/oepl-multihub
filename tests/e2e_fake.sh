@@ -13,8 +13,8 @@ trap cleanup EXIT
 python3 tools/hubtool.py fakehub --port 16650 --interval 3 > "$T/hub1.log" 2>&1 & H1=$!; pids+=($H1)
 python3 tools/hubtool.py fakehub --port 16651 --interval 3 --tag 0000021EEA023B12 > "$T/hub2.log" 2>&1 & H2=$!; pids+=($H2)
 sleep 0.5
-python3 -m oeplhub.server --data "$T/data" --hub 127.0.0.1:16650@26 --hub 127.0.0.1:16651@25 \
-    --tagtypes tagtypes --port $PORT > "$T/server.log" 2>&1 & pids+=($!)
+PYTHONPATH=addon python3 -m oeplhub.server --data "$T/data" --hub 127.0.0.1:16650@26 --hub 127.0.0.1:16651@25 \
+    --tagtypes addon/tagtypes --port $PORT > "$T/server.log" 2>&1 & pids+=($!)
 sleep 5
 
 python3 -c "from PIL import Image, ImageDraw

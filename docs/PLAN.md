@@ -277,7 +277,7 @@ OEPL channel plan:
    other hub, and gets its pending image.
 7. [ ] **Addon:**
    - **Base written and tested against simulated hubs** (16 Nov), not yet against HA:
-     - `python -m oeplhub.server --data DIR --hub HOST[:PORT]@CH ... --tagtypes tagtypes --port 8080`. Needs
+     - `PYTHONPATH=addon python -m oeplhub.server --data DIR --hub HOST[:PORT]@CH ... --tagtypes tagtypes --port 8080`. Needs
        `requirements.txt` (aiohttp, Pillow).
      - `oeplhub/core.py`: the AP logic, after `newproto.cpp`. Per-tag queue (a new plain image replaces queued
        images), announce the head to the tag's hub (or to all hubs if unknown or its hub is down), preload into the
