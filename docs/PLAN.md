@@ -130,6 +130,11 @@ Radio side: `main/v2link.c`, `main/main.c`. S3 side: `src/v2transport.cpp`.
   - **Missed heartbeats:** what does the radio do when they stop? Check `v2link.c`.
   - **Coexistence:** Wi-Fi and 802.15.4 share the C6's single 2.4 GHz radio (time-sliced, ESP-IDF coex).
     The risk is missed tag frames. Test it.
+    - Claim heard: "Wi-Fi and Zigbee can't run at the same time; the tag window is short, so it falls apart."
+      Partly true: the radio can't receive both at once, so a tag frame that arrives during a Wi-Fi slot is lost.
+      But tags retry and check in again on the next interval, so expect a lower hit rate, not total failure.
+      Keep Wi-Fi quiet (no polling traffic), give 802.15.4 coex priority, and measure in step 5.
+      Fallbacks: the USB hub variant or an ESP32 UART⇄TCP bridge (see Hardware).
 
 ## Multiple hubs
 
