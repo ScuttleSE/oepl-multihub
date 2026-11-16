@@ -212,6 +212,38 @@ OEPL channel plan:
   only costs time. The host must ACK every event except `LOG`, and must drop a repeated seq after ACKing it.
 - **The S3** treats 3 missed heartbeats as a lost link.
 
+## Home Assistant integration: the API it uses
+
+Checked 16 Nov 2026 against https://github.com/OpenEPaperLink/Home_Assistant_Integration (master), Wi-Fi AP mode only.
+The BLE parts don't touch the AP. The addon must serve these on port 80, with the same paths and formats as the
+stock AP:
+
+| Endpoint | Used for |
+|---|---|
+| `GET /` | config flow: checks that something answers |
+| `GET /sysinfo` | AP info (reads `env`, among others) |
+| `GET /get_ap_config` | AP settings |
+| `GET /get_db?pos=N` | tag list, paged with a continuation value |
+| `GET /current/<MAC>.raw` | the tag's current image (the integration decodes raw and G5 itself) |
+| `POST /imgupload` | multipart: `mac`, `contentmode=25`, `dither`, `ttl` (min), `lut`, `image` (**JPEG**) |
+| `POST /tag_cmd` | `mac`, `cmd` = `clear` / `refresh` / `reboot` / `scan` |
+| `GET /led_flash?mac=&pattern=` | tag LED |
+| `POST /save_cfg` | tag alias (`mac`, `alias`) |
+| `POST /save_apcfg` | AP settings |
+| `POST /reboot` | AP reboot |
+| `ws://host/ws` | JSON messages `sys`, `tags` (one tag record), `logMsg`, `errMsg`, `apitem` |
+
+Notes:
+- The image arrives as a JPEG, and the AP does the dithering and encoding. So the addon needs JPEG decoding and
+  dithering that match the stock AP (`makeimage.cpp`). Pillow is the likely dependency.
+- `logMsg` text is parsed: the integration looks for `block request` and `reports xfer complete`. Use the same wording.
+- `sys` fields read: `apstate`, `runstate`, `currtime`, `uptime`, `heap`, `recordcount`, `dbsize`, `littlefsfree`,
+  `psfree`, `rssi`, `wifissid`, `wifistatus`, `temp`, `lowbattcount`, `timeoutcount`, `mac`.
+- Tag fields read: `mac`, `alias`, `hwType`, `ver`, `RSSI`, `LQI`, `ch`, `batteryMv`, `temperature`, `lastseen`,
+  `nextupdate`, `nextcheckin`, `pending`, `hash`, `contentMode`, `modecfgjson`, `rotate`, `lut`, `wakeupReason`,
+  `capabilities`, `isexternal`, `updatecount`, `boot_count`, `checkin_count`, `block_requests`, `runtime`.
+- All hubs appear to HA as **one AP**, so HA doesn't need to know there are several hubs.
+
 ## Open questions
 
 - Radio behaviour on a TCP drop, for the Wi-Fi build. Probably the same as host loss (above). Decide whether `wifi_link.c`
@@ -219,5 +251,4 @@ OEPL channel plan:
 - Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?
 - How do tags rank multiple APs during a scan?
 - Exact image payload format and dataType for the tags: check `newproto.cpp` and `makeimage.cpp`.
-- Which parts of the stock web API does the official HA integration actually use?
-  This decides the minimum API surface.
+- Exact field formats in the `sys`, `tags` and `get_db` JSON: copy them from `web.cpp` and `tag_db.cpp`.
