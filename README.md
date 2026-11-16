@@ -28,7 +28,7 @@ worked with the real Home Assistant integration. Testing on real boards and tags
 | Hub firmware (Wi-Fi and USB) | Builds; not yet tested on a board |
 | Browser installer | Online; not yet tested on a board |
 | Addon core and API | Works with the HA integration and simulated hubs |
-| Home Assistant addon packaging | Written; not yet installed on HA |
+| Home Assistant addon packaging | Installs and starts on HA |
 | Addon web UI | Not started |
 
 ## Installing the addon
