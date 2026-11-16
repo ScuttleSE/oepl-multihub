@@ -247,6 +247,13 @@ OEPL channel plan:
      - `tagtypes/94.json` is kept here until upstream PR #638 is merged.
      - `tests/e2e_fake.sh`: two simulated hubs, a command plus an upload, then roaming and a second upload.
        Everything passes.
+     - **Tested with the real HA integration** (16 Nov), with the addon on the dev PC and a simulated hub holding two
+       fake tags. HA's config flow, `get_db`, the websocket and `drawcustom` → `/imgupload` → encode → preload →
+       `xfer complete` all worked, and the decoded image matched. The stock AP's entry had to be disabled (one AP
+       only, see below).
+     - **Type 0x94 can't be drawn from HA yet:** the integration only gets tag types from upstream GitHub `master`
+       (`tag_types.py`), and `94.json` waits for PR #638. Until then HA reports "Unexpected error getting tag type
+       … 148". The test used `--hw 0x41`.
      - Not yet: pending items survive a restart (they are kept in memory only), content modes other than uploads,
        `/jsonupload`, firmware OTA.
    - tag DB, kept in `/data`
