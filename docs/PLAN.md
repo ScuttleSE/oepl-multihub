@@ -3,6 +3,49 @@
 Project writeup, plan and working notes, for agents and developers. Started 16 Nov 2026. The user-facing intro is
 `README.md` in the repo root.
 
+## Current state and how to continue (16 Nov 2026)
+
+**Waiting for hardware:** 2× ESP32-C6 Super Mini, due about 19 Nov. Everything below is built and tested without
+hardware (against the simulated hub in `oeplhub/fakehub.py`). Nothing has run on a real C6 or a real tag yet.
+
+**What exists:**
+- **Hub firmware:** branch `host-link` of `ScuttleSE/OpenEPaperLink`, project `ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP`.
+  Kconfig choice "Host link": UART (stock, default), USB (`main/host_usb.c`), Wi-Fi (`main/host_wifi.c` with mDNS and
+  TCP 6639, `main/improv.c` for Improv Serial, own partition table `partitions-wifi.csv`). All three compile.
+- **Installer:** https://scuttlese.github.io/oepl-multihub/ (ESP Web Tools). It's built by
+  `.github/workflows/firmware.yml` from the fork commit in `firmware/upstream-ref`, using `firmware/build.sh`.
+  **After pushing to the fork, update `firmware/upstream-ref`** or the installer keeps the old build.
+- **Python package `oeplhub/`:** `v2proto` (framing), `transport` (serial and TCP), `link` (`HubLink`), `fakehub`,
+  `imageenc` (stock AP image format, checked against a real AP file), `tagdb`, `tagtypes`, `core` (AP logic, several
+  hubs, roaming), `server` (stock-compatible HTTP and websocket API, aiohttp).
+- **Tools:** `tools/hubtool.py` (`monitor`, `push --image/--file`, `fakehub --hw --tag`), `tests/e2e_fake.sh`, and
+  `tests/stop_fakes.sh`.
+- **Tested with the real HA integration** (step 7): drawing on a fake tag worked end to end.
+
+**Next steps, in order:**
+1. **When the boards arrive:** use the installer's **USB hub** on one board, then `python3 tools/hubtool.py monitor
+   /dev/ttyACM0 --channel 26` and watch for tag 1 (`8C73DAFFFE5D531B`; it's on the stock AP on channel 11 now, so
+   it needs a rescan or the stock AP switched off). Then `push … --image x.png --tagtype tagtypes/94.json --tag-fw
+   0x2B`. Check that opening the port doesn't reset the chip (DTR/RTS) and look at the `lateMs` timing.
+2. Reflash as a **Wi-Fi hub** with the installer, which tests Improv. Repeat step 1 against `oepl-hub-xxxx.local`.
+   Then do the coexistence test (plan step 5) and the roaming test with two hubs (step 6).
+3. **Addon packaging** for HA (`config.yaml`, Dockerfile, hub list in the options, port 80 or ingress), then keep
+   pending items across restarts, then the HA-style web UI.
+4. **Ask upstream** to merge PR #638 (`94.json`). Until then HA can't draw on 0x94 tags.
+
+**Environment notes:**
+- **ESP-IDF:** `export IDF_TOOLS_PATH=$PWD/toolchain/.espressif; . toolchain/esp-idf/export.sh`, then
+  `bash ../../../firmware/build.sh` in `upstream/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP`. `toolchain/` and
+  `upstream/` (the fork clone, remote `upstream` = the official repo) are git-ignored.
+- **Network:** the dev PC is `192.168.0.3`. HA reaches it, and HA's requests come from `192.168.0.80`. The stock AP
+  is `192.168.50.205` (read-only use was allowed).
+- **HA:** the user's real HA has the stock AP's OEPL entry. To test the addon, the user must disable that entry
+  (the integration supports one AP), then re-enable it afterwards. Use fake MACs (`00000000FA4E000x`) and a tag type
+  that is upstream (`--hw 0x41`).
+- **Gotcha:** `pkill -f`/`pgrep -f` with a pattern that also appears in your own shell command kills that shell.
+  Use `tests/stop_fakes.sh` (anchored pattern).
+- **Python:** Pillow and aiohttp are installed on the dev PC (Python 3.14). `gh` is logged in as ScuttleSE.
+
 ## Goal
 
 Replace the OpenEPaperLink (OEPL) access point with:
@@ -163,6 +206,7 @@ OEPL channel plan:
 ## Plan
 
 1. [ ] **Toolchain:** choose (a) or (b), then build the stock C6 radio firmware unchanged and flash a C6.
+   (Only the flashing is left.)
    - Chose (a). ESP-IDF v5.5.5 is in `toolchain/` (`IDF_TOOLS_PATH=toolchain/.espressif`, Python 3.14).
      The fork is cloned at `upstream/` (git-ignored). The stock C6 build works. Flashing waits for the boards (~19 Nov).
    - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
