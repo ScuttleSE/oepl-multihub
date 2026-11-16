@@ -456,6 +456,20 @@ Notes:
     Check `web.cpp` for paging.
 - The current AP runs on **802.15.4 channel 11**, the same as Zigbee. Expect the new hubs on 25 and 26 to do better.
 
+## Todo (later, not planned yet)
+
+- **Hub with a screen:** Heemol "ESP32 C6 Development Board with 1.3" LCD" (240×240 IPS, ST7789V2 over SPI, 4 MB
+  flash, about 215 SEK on Amazon.se). Discussed 16 Nov, parked by the user.
+  - Fits: the hub firmware is about 880 KB of a 1.8 MB slot, and IDF's `esp_lcd` ST7789 driver is small. Draw in
+    strips of a few KB instead of a 115 KB full frame.
+  - Unknown: the LCD pins. Our firmware uses GPIO 0–7 (CC1101 probe), 12/13 (USB), 16/17 (UART), 22/23 (LEDs).
+    Get the board's pinout first; it may need its own pin configuration. Also check where the antenna sits relative
+    to the screen. Turn the backlight off after a while.
+  - Step 1: hub status on the screen (online, channel, IP, tag count, activity). Firmware only.
+  - Step 2 (blocked): the screen as a tag in HA, as the stock AP does with its own TFT. It needs a new host-link
+    message to send an image to the hub. HA only knows tag types from upstream, and none is 240×240, so it needs an
+    upstream tag type first (like PR #638 for 0x94).
+
 ## Open questions
 
 - Wi-Fi build: should a TCP disconnect reset the radio to ASCII at once, instead of after 5 s? Not needed so far.
