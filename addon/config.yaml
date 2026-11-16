@@ -1,5 +1,5 @@
 name: OEPL multihub
-version: "0.5.0"
+version: "0.5.1"
 slug: oepl_multihub
 description: OpenEPaperLink access point with ESP32-C6 radio hubs
 url: https://github.com/ScuttleSE/oepl-multihub
@@ -26,5 +26,5 @@ options:
 schema:
   hubs:
     - spec: str
-      channel: int(0,26)
+      channel: int(11,27)?
   verbose: bool?

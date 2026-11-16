@@ -341,6 +341,9 @@ OEPL channel plan:
        rotation) with `ImageOps.fit` and then calls `upload_image`. Paths are confined to the media dir. Only
        the local media folder is covered; other HA media sources (cameras, …) would need `homeassistant_api` and
        the media_source websocket.
+     - **Addon 0.5.1:** `addon/translations/en.yaml` gives the options names and help text (nested `fields` for the
+       hub list). The channel is optional (`int(11,27)?`). Hubs without one get the first free channel from
+       `AUTO_CHANNELS` = 26, 25, 20, 15, 11, skipping channels set on other hubs.
      - Groups: not needed in the addon. The HA integration's actions accept `label_id` and `area_id` targets (see
        `services.py`), so HA labels serve as tag groups.
      - Not yet / skipped: other content modes (clock, weather, …), tag mirroring, the stock drawing tool.

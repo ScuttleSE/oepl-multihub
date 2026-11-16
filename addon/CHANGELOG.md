@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- The options screen now has proper names and explanations: Hubs, Address, Channel, Debug logging.
+- A hub's channel is optional. Without one, the addon picks a free channel (26, 25, 20, 15, 11 in that order), so
+  no two hubs share one.
+
 ## 0.5.0
 
 - Upload image now opens a picker for Home Assistant's media folder (Media › My media), with thumbnails and folders.

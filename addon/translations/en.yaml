@@ -1,0 +1,22 @@
+configuration:
+  hubs:
+    name: Hubs
+    description: >-
+      The ESP32-C6 radio hubs this addon uses. Add one entry per hub.
+    fields:
+      spec:
+        name: Address
+        description: >-
+          Where the hub is: its IP address or host name for a Wi-Fi hub (for example 192.168.1.60, port 6639 is
+          the default, or 192.168.1.60:6639), or the serial device for a hub plugged into this machine (for
+          example /dev/ttyACM0, or uart:/dev/ttyUSB0 for a hub connected through a USB-serial adapter).
+      channel:
+        name: Channel
+        description: >-
+          Optional. The 802.15.4 radio channel for this hub: 11, 15, 20, 25, 26 or 27. Leave it empty and the addon
+          picks a free one (26, 25, 20, 15, 11 in that order). Each hub must use a different channel. Avoid the
+          channel of your Zigbee or Thread network.
+  verbose:
+    name: Debug logging
+    description: >-
+      Write detailed messages to the addon log. Only needed when looking for a problem.

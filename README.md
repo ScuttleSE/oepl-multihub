@@ -35,7 +35,7 @@ worked with the real Home Assistant integration. Testing on real boards and tags
 
 In Home Assistant: *Settings → Add-ons → Add-on store → ⋮ → Repositories*, add
 `https://github.com/ScuttleSE/oepl-multihub`, then install **OEPL multihub**. In the addon options, list your hubs
-(`spec` is `HOST[:PORT]` or a serial device such as `/dev/ttyACM0`, and `channel` is 11–26, or 0 for automatic).
+(the address is the hub's IP, or a serial device such as `/dev/ttyACM0`; the channel is optional).
 Then add the OpenEPaperLink integration with your Home Assistant host's IP as the AP address.
 
 ## What you need

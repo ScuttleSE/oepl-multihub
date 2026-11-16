@@ -30,6 +30,8 @@ WAKEUP_REASON_FIRSTBOOT = 0xFC
 MAX_XFER_ATTEMPTS = 20
 PRELOAD_AGAIN_S = 600
 
+AUTO_CHANNELS = (26, 25, 20, 15, 11)  # radio firmware channels; Zigbee and Thread usually sit low
+
 IMAGE_TYPES = {0x20, 0x21, 0x22, 0x23, 0x30, 0x31}
 
 DEFAULT_AP_CONFIG = {
@@ -97,8 +99,15 @@ class Core:
                 self.ap_config.update(json.load(f))
         self._apply_timezone()
         self.hubs = []
+        # hubs without a channel get a free one, so no two hubs answer the same tag
+        taken = {int(h.get("channel") or 0) for h in hubs}
+        free = [c for c in AUTO_CHANNELS if c not in taken]
         for i, h in enumerate(hubs):
-            hub = Hub(name=h.get("name") or f"hub{i + 1}", spec=h["spec"], channel=int(h.get("channel", 0)))
+            channel = int(h.get("channel") or 0)
+            if not channel and free:
+                channel = free.pop(0)
+                log.info("%s: channel %d chosen automatically", h.get("name") or f"hub{i + 1}", channel)
+            hub = Hub(name=h.get("name") or f"hub{i + 1}", spec=h["spec"], channel=channel)
             hub.link = HubLink(hub.name, open_transport(hub.spec), on_event=self._on_event, on_state=self._on_state,
                                ack_timeout_ms=ack_timeout_ms)
             self.hubs.append(hub)
