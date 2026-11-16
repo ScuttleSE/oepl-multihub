@@ -1,0 +1,573 @@
+"""The AP logic: what the stock AP's S3 does (newproto.cpp, pendingupload), for several hubs and one DB.
+
+Threads: each hub's HubLink calls on_event from its dispatcher thread. Web requests call the public
+methods from the server's thread. State is guarded by self.lock; radio I/O happens outside it.
+"""
+
+import json
+import logging
+import os
+import struct
+import threading
+import time
+from dataclasses import dataclass, field
+
+from . import imageenc
+from . import v2proto as v2
+from .link import HubLink, LinkError
+from .tagdb import NEVER, TagDB
+from .transport import open_transport
+
+log = logging.getLogger("core")
+
+DATATYPE_NOUPDATE = 0
+DATATYPE_FW_UPDATE = 3
+DATATYPE_COMMAND_DATA = 0xAF
+CMD_DO_REBOOT, CMD_DO_SCAN, CMD_DO_RESET_SETTINGS, CMD_DO_DEEPSLEEP, CMD_DO_LEDFLASH = 0, 1, 2, 3, 4
+WAKEUP_REASON_FIRSTBOOT = 0xFC
+MAX_XFER_ATTEMPTS = 20
+PRELOAD_AGAIN_S = 600
+
+IMAGE_TYPES = {0x20, 0x21, 0x22, 0x23, 0x30, 0x31}
+
+DEFAULT_AP_CONFIG = {
+    "alias": "", "channel": 0, "subghzchannel": 0, "led": 127, "tft": 255, "language": 0, "maxsleep": 10,
+    "stopsleep": 1, "preview": 1, "nightlyreboot": 0, "lock": 0, "wifipower": 34,
+    "timezone": "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00", "sleeptime1": 0, "sleeptime2": 0, "ble": 0,
+    "repo": "OpenEPaperLink/OpenEPaperLink", "discovery": 0, "showtimestamp": 0,
+}
+
+
+@dataclass
+class Item:
+    data_type: int
+    arg: int = 0
+    ver: int = 0
+    data: bytes = b""
+    next_checkin: int = 0
+    filename: str = ""
+    attempts: int = MAX_XFER_ATTEMPTS
+    cmd_size: int = 0  # a command carries 12 payload bytes in dataVer and dataSize
+
+    @property
+    def size(self):
+        return self.cmd_size if self.data_type == DATATYPE_COMMAND_DATA else len(self.data)
+
+    @property
+    def plain_image(self):
+        return self.data_type in IMAGE_TYPES and (self.arg & 0xFC) == 0
+
+
+@dataclass
+class Hub:
+    name: str
+    spec: str
+    channel: int
+    link: HubLink = None
+    preloaded: dict = field(default_factory=dict)  # dataVer -> time sent to the cache
+
+
+def now() -> int:
+    return int(time.time())
+
+
+class Core:
+    def __init__(self, data_dir, hubs, tagtypes, notify=lambda msg: None, ack_timeout_ms=v2.ACK_TIMEOUT_MS):
+        self.data_dir = data_dir
+        self.current_dir = os.path.join(data_dir, "current")
+        os.makedirs(self.current_dir, exist_ok=True)
+        self.db = TagDB(os.path.join(data_dir, "tagDB.json"))
+        self.db.load()
+        self.tagtypes = tagtypes
+        self.notify = notify
+        self.lock = threading.RLock()
+        self.queues: dict[str, list[Item]] = {}
+        self.started = time.monotonic()
+        self.ws_clients = 0
+        self.cfg_path = os.path.join(data_dir, "apconfig.json")
+        self.ap_config = dict(DEFAULT_AP_CONFIG)
+        if os.path.exists(self.cfg_path):
+            with open(self.cfg_path) as f:
+                self.ap_config.update(json.load(f))
+        self.hubs = []
+        for i, h in enumerate(hubs):
+            hub = Hub(name=h.get("name") or f"hub{i + 1}", spec=h["spec"], channel=int(h.get("channel", 0)))
+            hub.link = HubLink(hub.name, open_transport(hub.spec), on_event=self._on_event, on_state=self._on_state,
+                               ack_timeout_ms=ack_timeout_ms)
+            self.hubs.append(hub)
+        self._stop = threading.Event()
+
+    # --- lifecycle -------------------------------------------------------------------------------
+
+    def start(self):
+        for hub in self.hubs:
+            threading.Thread(target=self._keep_up, args=(hub,), name=f"{hub.name}-up", daemon=True).start()
+        threading.Thread(target=self._housekeeping, name="housekeeping", daemon=True).start()
+
+    def stop(self):
+        self._stop.set()
+        for hub in self.hubs:
+            hub.link.close()
+        self.db.save()
+
+    def _keep_up(self, hub):
+        while not self._stop.is_set():
+            if not hub.link.up:
+                try:
+                    hub.link.connect()
+                except (LinkError, OSError) as e:
+                    log.warning("%s (%s): connect failed: %s", hub.name, hub.spec, e)
+                    hub.link.close()
+                    self._stop.wait(3)
+                    continue
+            self._stop.wait(0.5)
+
+    def _housekeeping(self):
+        while not self._stop.wait(5):
+            if self.db.dirty:
+                try:
+                    self.db.save()
+                except OSError as e:
+                    log.error("saving the tag DB: %s", e)
+
+    def hub_by_name(self, name):
+        return next((h for h in self.hubs if h.name == name), None)
+
+    def hubs_up(self):
+        return [h for h in self.hubs if h.link.up]
+
+    # --- messages to the web side ----------------------------------------------------------------
+
+    def ws_log(self, text):
+        log.info("%s", text)
+        self.notify({"logMsg": text})
+
+    def ws_err(self, text):
+        log.warning("%s", text)
+        self.notify({"errMsg": text})
+
+    def ws_tag(self, mac):
+        t = self.db.get(mac)
+        if t:
+            self.notify({"tags": [t.to_json()]})
+
+    # --- hub events ------------------------------------------------------------------------------
+
+    def _on_state(self, link, up):
+        hub = next(h for h in self.hubs if h.link is link)
+        if not up:
+            self.ws_err(f"{hub.name} offline")
+            return
+        hub.preloaded.clear()
+        try:
+            link.set_config(channel=hub.channel or v2.CFG_UNCHANGED_U8,
+                            led=int(self.ap_config.get("led", 127)) & 0xFF)
+        except LinkError as e:
+            log.warning("%s: SET_CONFIG failed: %s", hub.name, e)
+        try:
+            channel = link.get_stats().get("channel", hub.channel)
+        except LinkError:
+            channel = hub.channel
+        self.ws_log(f"{hub.name} online, channel {channel}")
+        # what this hub should offer: tags last seen on it, and tags not seen anywhere yet
+        with self.lock:
+            macs = [m for m, q in self.queues.items() if q]
+        for mac in macs:
+            t = self.db.get(mac)
+            if t and (t.hub in ("", hub.name)):
+                self._announce(mac, only=hub)
+
+    def _on_event(self, link, ftype, ev):
+        hub = next(h for h in self.hubs if h.link is link)
+        if ftype == v2.CHECKIN:
+            self._checkin(hub, ev)
+        elif ftype == v2.DATA_NEEDED:
+            self._data_needed(hub, ev)
+        elif ftype == v2.BLOCK_SERVED:
+            self._block_served(hub, ev)
+        elif ftype == v2.XFER_COMPLETE:
+            self._xfer_complete(hub, ev)
+        elif ftype == v2.XFER_TIMEOUT:
+            self._xfer_timeout(hub, ev)
+        elif ftype == v2.TAG_RETURN_DATA:
+            self.ws_log(f"<TRD {ev['mac']} {ev['data'].hex()}")
+        elif ftype == v2.LOG:
+            log.info("%s radio: %s", hub.name, ev["text"])
+
+    def _checkin(self, hub, ev):
+        mac = ev["mac"]
+        adr = ev["adr"]
+        roamed_from = None
+        with self.lock:
+            t = self.db.get(mac)
+            if t is None:
+                lock = int(self.ap_config.get("lock", 0))
+                if lock == 1 or (lock == 2 and (not adr or adr["wakeupReason"] != WAKEUP_REASON_FIRSTBOOT)):
+                    return
+                t = self.db.add(mac)
+                self.ws_log(f"new tag {mac} on {hub.name}")
+            if t.hub and t.hub != hub.name:
+                roamed_from = self.hub_by_name(t.hub)
+            t.hub = hub.name
+            ts = now()
+            if self.queues.get(mac) or t.pending_idle == 0:
+                if t.nextcheckin < ts + 60 or t.nextcheckin == NEVER:
+                    t.nextcheckin = ts + 60
+            else:
+                t.nextcheckin = ts + t.pending_idle
+            t.pending_idle = 0
+            t.lastseen = ts
+            if adr and adr["lastPacketRSSI"] != 0:
+                if adr["wakeupReason"] >= 0xE0:
+                    if not self.queues.get(mac):
+                        t.nextupdate = 0
+                        t.md5 = b"\x00" * 16
+                    reason = {0xFC: "Booting", 0xFD: "Network scan", 0xFE: "Watchdog reset",
+                              0xE0: "Firmware update rejected"}.get(adr["wakeupReason"], "")
+                    self.ws_log(f"{mac} {reason}")
+                t.LQI = adr["lastPacketLQI"]
+                t.RSSI = adr["lastPacketRSSI"]
+                t.temperature = adr["temperature"]
+                t.batteryMv = adr["batteryMv"]
+                t.wakeupReason = adr["wakeupReason"]
+                t.capabilities = adr["capabilities"]
+                t.ch = adr["currentChannel"]
+                t.hwType = adr["hwType"]
+                t.ver = adr["tagSoftwareVersion"]
+            self.db.dirty = True
+            has_queue = bool(self.queues.get(mac))
+        if roamed_from is not None:
+            self.ws_log(f"{mac} moved from {roamed_from.name} to {hub.name}")
+            if roamed_from.link.up:
+                try:
+                    roamed_from.link.cancel_pending(v2.mac_bytes(mac))
+                except LinkError:
+                    pass
+        if has_queue and (roamed_from is not None or ev["answeredType"] == 0):
+            self._announce(mac, only=hub)
+        self.ws_tag(mac)
+
+    def _item_by_ver(self, mac, ver):
+        with self.lock:
+            return next((i for i in self.queues.get(mac, []) if i.ver == ver), None)
+
+    def _data_needed(self, hub, ev):
+        mac = ev["mac"]
+        item = self._item_by_ver(mac, ev["dataVer"])
+        if item is None or not item.data:
+            with self.lock:
+                queued = bool(self.queues.get(mac))
+            if queued:
+                self._announce(mac, only=hub)
+            else:
+                self._cancel_on(hub, mac)
+            return
+        off, length = ev["offset"], ev["length"]
+        try:
+            hub.link.send_data(item.ver, item.data, off, length)
+        except LinkError as e:
+            log.warning("%s: block for %s not sent: %s", hub.name, mac, e)
+            return
+        block = off // v2.BLOCK_SIZE
+        checksum = sum(item.data[off:off + length]) & 0xFFFF
+        total = (item.size + v2.BLOCK_SIZE - 1) // v2.BLOCK_SIZE
+        self.ws_log(f"{mac} block request {item.filename} block {block}, len {length} checksum {checksum}")
+        self.notify({"upload": {"src": mac, "current": block + 1, "total": total}})
+
+    def _block_served(self, hub, ev):
+        mac = ev["mac"]
+        item = self._item_by_ver(mac, ev["dataVer"])
+        if item is None:
+            return
+        total = (item.size + v2.BLOCK_SIZE - 1) // v2.BLOCK_SIZE
+        self.ws_log(f"{mac} block served {item.filename} block {ev['blockId']}, {ev['partsRequested']} parts, "
+                    f"{ev['framesSent']} frames, {ev['lateMs']} ms late")
+        self.notify({"upload": {"src": mac, "current": ev["blockId"] + 1, "total": total}})
+
+    def _xfer_complete(self, hub, ev):
+        mac = ev["mac"]
+        self.ws_log(f"{mac} reports xfer complete")
+        with self.lock:
+            q = self.queues.get(mac, [])
+            head = q[0] if q else None
+            if head is not None and head.ver != ev["dataVer"]:
+                # finished data that was replaced meanwhile: offer the current item again
+                replaced = True
+            else:
+                replaced = False
+                if head is not None:
+                    q.pop(0)
+            t = self.db.get(mac)
+            if t is not None and not replaced:
+                if head is not None:
+                    if head.data_type != DATATYPE_COMMAND_DATA:
+                        t.md5 = struct.pack("<Q", head.ver) + b"\x00" * 8
+                    if head.data_type in IMAGE_TYPES:
+                        t.imgtype = head.data_type
+                        if int(self.ap_config.get("preview", 1)):
+                            with open(os.path.join(self.current_dir, f"{mac}.raw"), "wb") as f:
+                                f.write(head.data)
+                    if head.data_type == DATATYPE_COMMAND_DATA and head.arg == CMD_DO_DEEPSLEEP:
+                        t.nextcheckin = NEVER
+                t.updatecount += 1
+                t.updatelast = now()
+                t.pending = len(q)
+                t.wakeupReason = 0
+                self.db.dirty = True
+            more = bool(q)
+        if replaced or more:
+            self._announce(mac, only=hub)
+        elif head is not None:
+            self._cancel_on(hub, mac)
+        self.ws_tag(mac)
+
+    def _xfer_timeout(self, hub, ev):
+        mac = ev["mac"]
+        self.ws_err(f"< {mac} xfer timeout")
+        with self.lock:
+            self.queues[mac] = []
+            t = self.db.get(mac)
+            if t:
+                t.pending_idle = 60
+                t.pending = 0
+        self.ws_tag(mac)
+
+    # --- announcing to the radios ----------------------------------------------------------------
+
+    def _target_hubs(self, mac, only=None):
+        if only is not None:
+            return [only] if only.link.up else []
+        t = self.db.get(mac)
+        hub = self.hub_by_name(t.hub) if t and t.hub else None
+        if hub is not None and hub.link.up:
+            return [hub]
+        return self.hubs_up()  # not seen yet, or its hub is down: every hub offers it
+
+    def _announce(self, mac, only=None):
+        """SET_PENDING for the tag's first queued item (checkQueue in the stock AP)."""
+        with self.lock:
+            q = self.queues.get(mac, [])
+            if not q:
+                return
+            item = q[0]
+            next_checkin = (5 | 0x8000) if len(q) > 1 else item.next_checkin
+        mb = v2.mac_bytes(mac)
+        for hub in self._target_hubs(mac, only):
+            link = hub.link
+            preload = bool(item.data) and bool(link.hello.get("caps", 0) & v2.CAP_BLOCK_CACHE) \
+                and time.monotonic() - hub.preloaded.get(item.ver, -1e9) > PRELOAD_AGAIN_S
+            try:
+                link.set_pending(mb, item.ver, item.size, item.data_type, item.arg, next_checkin,
+                                 ttl_min=item.attempts, data_follows=preload)
+                if preload:
+                    t0 = time.monotonic()
+                    link.send_data(item.ver, item.data)
+                    hub.preloaded[item.ver] = time.monotonic()
+                    blocks = (item.size + v2.BLOCK_SIZE - 1) // v2.BLOCK_SIZE
+                    self.ws_log(f"{mac} {item.filename} sent to {hub.name} in advance, {blocks} of {blocks} blocks "
+                                f"in {(time.monotonic() - t0) * 1000:.0f} ms")
+            except LinkError as e:
+                log.warning("%s: announcing %s failed: %s", hub.name, mac, e)
+
+    def _cancel_on(self, hub, mac):
+        if hub.link.up:
+            try:
+                hub.link.cancel_pending(v2.mac_bytes(mac))
+            except LinkError:
+                pass
+
+    def _cancel_everywhere(self, mac):
+        for hub in self.hubs_up():
+            self._cancel_on(hub, mac)
+
+    def _queue(self, mac, item: Item):
+        """queueDataAvail: a new plain image replaces queued plain images."""
+        with self.lock:
+            q = self.queues.setdefault(mac, [])
+            if item.plain_image:
+                q[:] = [i for i in q if not i.plain_image]
+            q.append(item)
+            t = self.db.get(mac)
+            if t:
+                t.pending = len(q)
+        self._announce(mac)
+        self.ws_tag(mac)
+
+    # --- requests from the web side --------------------------------------------------------------
+
+    def max_sleep(self, minutes):
+        maxsleep = int(self.ap_config.get("maxsleep", 10))
+        if minutes > maxsleep:
+            minutes = maxsleep
+        if self.ws_clients and int(self.ap_config.get("stopsleep", 1)) == 1:
+            minutes = 0
+        return minutes
+
+    def upload_image(self, mac, image_bytes, dither=1, ttl=0, lut=None, rotate=None, invert=None, alias=None,
+                     preload_type=None, preload_lut=0, contentmode=24):
+        """/imgupload: convert and queue. Returns (status, text)."""
+        t = self.db.get(mac)
+        if t is None:
+            return 400, "mac not found"
+        with self.lock:
+            if alias is not None:
+                t.alias = alias
+            if rotate is not None:
+                t.rotate = rotate
+            if lut is not None:
+                t.lut = lut
+            if invert is not None:
+                t.invert = invert
+            name = f"/temp/{mac}_{int(time.monotonic() * 1000) % 100000000}.jpg"
+            preload = preload_type is not None
+            t.modecfgjson = json.dumps({"filename": name, "timetolive": str(ttl), "dither": str(dither), "delete": "1",
+                                        "preload": str(int(preload)), "preload_lut": str(preload_lut),
+                                        "preload_type": str(preload_type or 0)}, separators=(",", ":"))
+            t.contentMode = contentmode
+            t.nextupdate = NEVER
+            self.db.dirty = True
+        self.ws_tag(mac)
+        tt = self.tagtypes.get(t.hwType)
+        if tt is None:
+            self.ws_err(f"no tag type for hwType {t.hwType:02X}")
+            return 200, "Ok, saved"
+        try:
+            data_type, data = imageenc.encode_jpeg(image_bytes, tt, dither=dither, rotate=t.rotate, tag_fw=t.ver)
+        except Exception as e:
+            self.ws_err(f"image conversion failed: {e}")
+            return 200, "Ok, saved"
+        if preload:
+            arg = imageenc.data_type_arg(lut=preload_lut, preload=True, special_type=preload_type)
+        else:
+            arg = imageenc.data_type_arg(lut=t.lut)
+        self.queue_data(mac, data_type, data, arg, self.max_sleep(ttl), name)
+        return 200, "Ok, saved"
+
+    def queue_data(self, mac, data_type, data, arg=0, next_checkin=0, filename=""):
+        ver = imageenc.data_ver(data)
+        t = self.db.get(mac)
+        if t is not None and t.md5[:8] == struct.pack("<Q", ver):
+            self.ws_log("new image is the same as current image. not updating tag.")
+            self.ws_tag(mac)
+            return
+        if t is not None:
+            t.pending_idle = (next_checkin & 0x7FFF) + 5 if next_checkin & 0x8000 else next_checkin * 60 + 60
+        name = f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending"
+        self.ws_log(f"new image: {name}")
+        self._queue(mac, Item(data_type=data_type, arg=arg, ver=ver, data=data, next_checkin=next_checkin,
+                              filename=name))
+
+    def tag_command(self, mac, cmd, payload=b""):
+        ver, size = struct.unpack("<QI", payload.ljust(12, b"\x00")[:12])
+        self._queue(mac, Item(data_type=DATATYPE_COMMAND_DATA, arg=cmd, ver=ver, cmd_size=size))
+
+    def cmd(self, mac, cmd):
+        """/tag_cmd. Returns (status, text)."""
+        t = self.db.get(mac)
+        if t is None:
+            return 400, "Error: mac not found"
+        if cmd == "del":
+            self.db.delete(mac)
+            with self.lock:
+                self.queues.pop(mac, None)
+        elif cmd == "purge":
+            ts = now()
+            for tag in list(self.db.tags.values()):
+                if tag.nextcheckin == NEVER or tag.lastseen < ts - 24 * 3600 or ts > tag.nextcheckin + 600:
+                    self.db.delete(tag.mac)
+        elif cmd == "clear":
+            self._cancel_everywhere(mac)
+            with self.lock:
+                self.queues[mac] = []
+                t.pending = 0
+            self.ws_tag(mac)
+        elif cmd == "refresh":
+            p = os.path.join(self.current_dir, f"{mac}.raw")
+            if os.path.exists(p) and t.imgtype:
+                with open(p, "rb") as f:
+                    data = f.read()
+                t.md5 = b"\x00" * 16
+                self.queue_data(mac, t.imgtype, data, imageenc.data_type_arg(lut=t.lut), 0)
+        elif cmd in ("reboot", "scan", "reset", "deepsleep"):
+            c = {"reboot": CMD_DO_REBOOT, "scan": CMD_DO_SCAN, "reset": CMD_DO_RESET_SETTINGS,
+                 "deepsleep": CMD_DO_DEEPSLEEP}[cmd]
+            self.tag_command(mac, c)
+        elif cmd == "ledflash":
+            self.tag_command(mac, CMD_DO_LEDFLASH, bytes([0x81, 0x3C, 0x13, 10, 0xE4, 0x53, 10, 0x03, 0xA3, 10, 2, 0]))
+        elif cmd == "ledflash_long":
+            self.tag_command(mac, CMD_DO_LEDFLASH, bytes([0x11, 0xE4, 0x33, 50, 0, 0, 0, 0, 0, 0, 60, 0]))
+        elif cmd == "ledflash_stop":
+            self.tag_command(mac, CMD_DO_LEDFLASH, bytes(12))
+        self.db.dirty = True
+        return 200, "Ok, done"
+
+    def led_flash(self, mac, pattern_hex):
+        if self.db.get(mac) is None:
+            return 400, "parameters are missing"
+        payload = bytes(12)
+        if pattern_hex is not None:
+            try:
+                payload = bytes.fromhex(pattern_hex[:24])
+                assert len(payload) == 12
+            except (ValueError, AssertionError):
+                return 400, "Error: expects 12 hex bytes in pattern"
+        self.tag_command(mac, CMD_DO_LEDFLASH, payload)
+        return 200, "ok, request transmitted"
+
+    def save_tag_cfg(self, mac, form):
+        t = self.db.get(mac)
+        if t is None:
+            return 200, "Error while saving: mac not found"
+        with self.lock:
+            if "contentmode" in form:
+                t.contentMode = int(form["contentmode"])
+            if "alias" in form:
+                t.alias = form["alias"]
+            if "modecfgjson" in form:
+                t.modecfgjson = form["modecfgjson"]
+            for k in ("rotate", "lut", "invert"):
+                if k in form:
+                    setattr(t, k, int(form[k]))
+            self.db.dirty = True
+        self.ws_tag(mac)
+        return 200, "Ok, saved"
+
+    def save_ap_config(self, form):
+        int_keys = {"channel", "subghzchannel", "led", "tft", "language", "maxsleep", "stopsleep", "preview",
+                    "nightlyreboot", "lock", "wifipower", "sleeptime1", "sleeptime2", "ble", "discovery",
+                    "showtimestamp"}
+        for k, v in form.items():
+            if k in DEFAULT_AP_CONFIG:
+                self.ap_config[k] = int(v) if k in int_keys else v
+        with open(self.cfg_path, "w") as f:
+            json.dump(self.ap_config, f, indent=1)
+        led = int(self.ap_config.get("led", 127)) & 0xFF
+        for hub in self.hubs_up():
+            try:
+                hub.link.set_config(led=led)
+            except LinkError:
+                pass
+        return 200, "Ok, saved"
+
+    # --- status ----------------------------------------------------------------------------------
+
+    def sys_info(self, counts=False):
+        d = {"currtime": now(), "heap": 0, "recordcount": len(self.db.tags), "dbsize": len(self.db.tags) * 300,
+             "littlefsfree": 0, "psfree": 0, "apstate": 1 if self.hubs_up() else 0, "runstate": 2, "rssi": 0,
+             "wifistatus": 3, "wifissid": "", "uptime": int(time.monotonic() - self.started)}
+        if counts:
+            ts = now()
+            d["lowbattcount"] = sum(1 for t in self.db.tags.values() if 0 < t.batteryMv < 2600)
+            d["timeoutcount"] = sum(1 for t in self.db.tags.values()
+                                    if t.nextcheckin and t.nextcheckin != NEVER and ts > t.nextcheckin + 600)
+        return d
+
+    def hub_status(self):
+        out = []
+        for h in self.hubs:
+            st = h.link.status if h.link.up else {}
+            out.append({"name": h.name, "spec": h.spec, "up": h.link.up, "channel": st.get("channel", h.channel),
+                        "mac": v2.mac_str(h.link.hello["mac"]) if h.link.hello else "",
+                        "fw": h.link.hello.get("fwVersion", 0), "status": st, "stats": dict(h.link.stats),
+                        "tags": sum(1 for t in self.db.tags.values() if t.hub == h.name)})
+        return out

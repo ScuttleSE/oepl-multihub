@@ -2,3 +2,4 @@ toolchain/
 build/
 __pycache__/
 upstream/
+data/

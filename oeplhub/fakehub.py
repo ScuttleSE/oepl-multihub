@@ -299,7 +299,12 @@ class FakeRadio:
             channel=self.channel, pan=0x4447, kind=v2.CHECKIN_FULL,
             answeredVer=sp["dataVer"] if sp else 0, answeredType=sp["dataType"] if sp else 0, adr=adr)
         self.queue_event(v2.CHECKIN, ci)
-        if sp and sp["dataType"] and sp["dataSize"]:
+        if sp and sp["dataType"] == 0xAF:
+            # a command travels in the answer itself: done at once
+            del self.pending[tag.mac]
+            self.queue_event(v2.XFER_COMPLETE, v2.XferEnd.pack(mac=tag.mac, dataVer=sp["dataVer"]))
+            log.info("%s: command %02X delivered", v2.mac_str(tag.mac), sp["dataTypeArg"])
+        elif sp and sp["dataType"] and sp["dataSize"]:
             threading.Thread(target=self.tag_transfer, args=(tag, sp), daemon=True).start()
 
     def tag_transfer(self, tag, sp):

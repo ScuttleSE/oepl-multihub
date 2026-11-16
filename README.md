@@ -231,6 +231,24 @@ OEPL channel plan:
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
    other hub, and gets its pending image.
 7. [ ] **Addon:**
+   - **Base written and tested against simulated hubs** (16 Nov), not yet against HA:
+     - `python -m oeplhub.server --data DIR --hub HOST[:PORT]@CH ... --tagtypes tagtypes --port 8080`. Needs
+       `requirements.txt` (aiohttp, Pillow).
+     - `oeplhub/core.py`: the AP logic, after `newproto.cpp`. Per-tag queue (a new plain image replaces queued
+       images), announce the head to the tag's hub (or to all hubs if unknown or its hub is down), preload into the
+       radio cache, `DATA_NEEDED`, `XFER_COMPLETE` (hash = MD5[:8], `/current/<MAC>.raw`), `XFER_TIMEOUT`, commands
+       (`0xAF`: reboot, scan, reset, deepsleep, LED), lock modes, and roaming (`CANCEL_PENDING` on the old hub,
+       announce on the new one).
+     - `oeplhub/server.py`: `/`, `/ws`, `/get_db` (paged, `continu`), `/sysinfo`, `/get_ap_config`, `/save_apcfg`,
+       `/save_cfg`, `/tag_cmd`, `/led_flash`, `/imgupload`, `/reboot`, `/current/*`, `/tagtypes/*`, plus `/api/hubs`
+       (ours). `sys` is sent every 5 s.
+     - `oeplhub/tagdb.py` (tag records, the same fields as `fillNode()`, `data/tagDB.json`),
+       `oeplhub/tagtypes.py` (local `tagtypes/` first, then upstream GitHub, cached).
+     - `tagtypes/94.json` is kept here until upstream PR #638 is merged.
+     - `tests/e2e_fake.sh`: two simulated hubs, a command plus an upload, then roaming and a second upload.
+       Everything passes.
+     - Not yet: pending items survive a restart (they are kept in memory only), content modes other than uploads,
+       `/jsonupload`, firmware OTA.
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it
