@@ -140,7 +140,7 @@ OEPL channel plan:
     - Tag type `94.json` (hwid 0x94, `usetemplate` 65): https://github.com/OpenEPaperLink/OpenEPaperLink/pull/638
   - Image data: 2 bpp, 4 colours (0 black, 1 white, 2 yellow, 3 red). The panel needs no special pixel reordering
     from the host on OEPL. The tag firmware handles that.
-- **Tag 1, MAC `EF70A4D777DF`:** debug-unlocked, on OEPL. Use it for tests.
+- **Tag 1, OEPL MAC `8C73DAFFFE5D531B`** (label on the tag: `EF70A4D777DF`): debug-unlocked, on OEPL. Use it for tests.
 - More OEPL tags work as long as their tagtype JSON exists.
 
 ## Toolchain
@@ -260,8 +260,6 @@ Notes:
 
 ## Open questions
 
-- Tag 1's MAC is written as `EF70A4D777DF` (12 hex digits), but OEPL MACs are 8 bytes (16 hex digits). What is the
-  full MAC? The simulated hub uses `0000EF70A4D777DF` for now.
 - Radio behaviour on a TCP drop, for the Wi-Fi build. Probably the same as host loss (above). Decide whether `wifi_link.c`
   should reset to ASCII at once when the client disconnects.
 - Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?

@@ -143,7 +143,7 @@ def cmd_push(args):
 
 def cmd_fakehub(args):
     from oeplhub.fakehub import FakeRadio, FakeTag
-    tags = [FakeTag(m, interval=args.interval) for m in (args.tag or ["0000EF70A4D777DF"])]
+    tags = [FakeTag(m, interval=args.interval) for m in (args.tag or ["8C73DAFFFE5D531B"])]
     FakeRadio(tags, loss=args.loss, jitter_ms=args.jitter).serve(port=args.port)
 
 
