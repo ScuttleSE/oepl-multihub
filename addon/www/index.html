@@ -130,11 +130,13 @@
     <button data-tab="tags" class="active">Tags</button>
     <button data-tab="hubs">Hubs</button>
     <button data-tab="settings">Settings</button>
+    <button data-tab="backup">Backup</button>
     <button data-tab="log">Log</button>
   </nav>
 </header>
 <main>
-  <section id="tab-tags"><div class="grid" id="tags"></div></section>
+  <section id="tab-tags"><div id="alerts"></div><div class="grid" id="tags"></div></section>
+  <input type="file" id="imgfile" accept="image/*" hidden>
   <section id="tab-hubs" hidden><div class="grid" id="hubs"></div></section>
   <section id="tab-settings" hidden>
     <div class="card"><div class="body">
@@ -176,6 +178,33 @@
         turn them off.</p>
       <p class="small muted">The hub list is set in the addon's Configuration tab in Home Assistant.</p>
     </div></div>
+  </section>
+  <section id="tab-backup" hidden>
+    <div class="grid">
+      <div class="card"><div class="head"><h2>Backup</h2></div><div class="body">
+        <p class="muted">Download the tag database: names, settings and last known state of every tag.</p>
+        <a class="flat" id="backuplink" download="tagDB.json"><button class="raised" type="button">Download</button></a>
+      </div></div>
+      <div class="card"><div class="head"><h2>Restore</h2></div><div class="body">
+        <p class="muted">Load a backup from this addon or a <code>tagDB.json</code> from a stock access point (its
+          <i>Backup DB</i> button). Tags in the file are added or get their name and settings back; other tags stay.</p>
+        <button class="raised" type="button" id="restorebtn">Choose file</button>
+        <input type="file" id="restorefile" accept=".json,application/json" hidden>
+      </div></div>
+      <div class="card"><div class="head"><h2>Import from a stock access point</h2></div><div class="body">
+        <p class="muted">Copies the tag list, names, settings and current images from a running OpenEPaperLink access
+          point. The access point is not changed.</p>
+        <form class="form" id="importform">
+          <label><span>Address of the access point</span><input name="host" placeholder="192.168.1.50" required></label>
+          <div><button class="raised" type="submit">Import</button></div>
+        </form>
+      </div></div>
+      <div class="card"><div class="head"><h2>Variables</h2></div><div class="body">
+        <p class="muted">Values for <code>{name}</code> placeholders in JSON templates, set with <code>/set_var</code> or
+          <code>/set_vars</code>. Tags that use a variable are redrawn when it changes.</p>
+        <table id="vars"></table>
+      </div></div>
+    </div>
   </section>
   <section id="tab-log" hidden><div class="card"><div id="log"></div></div></section>
 </main>
@@ -268,6 +297,7 @@ $("#tabs").addEventListener("click", (e) => {
   for (const s of document.querySelectorAll("main > section")) s.hidden = s.id !== "tab-" + b.dataset.tab;
   if (b.dataset.tab === "settings") loadSettings();
   if (b.dataset.tab === "hubs") loadHubs();
+  if (b.dataset.tab === "backup") loadVars();
 });
 
 function toast(text) {
@@ -334,6 +364,7 @@ function tagCard(t) {
     </div>
     <div class="actions">
       <button class="flat" data-act="settings">Settings</button>
+      <button class="flat" data-act="upload">Upload image</button>
       <button class="flat" data-act="refresh">Refresh</button>
       <button class="flat" data-act="ledflash">Flash LED</button>
       ${t.pending ? `<button class="flat" data-act="clear">Clear pending</button>` : ""}
@@ -344,8 +375,22 @@ function tagCard(t) {
   </div>`;
 }
 
+function renderAlerts(list) {
+  const items = [];
+  for (const t of list) {
+    const name = esc(t.alias || t.mac);
+    if (t.batteryMv && t.batteryMv < 2600) items.push(`<span class="badge err">low battery</span> ${name} (${(t.batteryMv / 1000).toFixed(2)} V)`);
+    if (overdue(t)) items.push(`<span class="badge err">overdue</span> ${name}, last seen ${ago(t.lastseen)}`);
+    if (t.wakeupReason === 0xE0) items.push(`<span class="badge warn">firmware rejected</span> ${name}`);
+  }
+  $("#alerts").innerHTML = items.length
+    ? `<div class="card" style="margin-bottom:16px"><div class="body">${items.map((i) => `<div style="padding:4px 0">${i}</div>`).join("")}</div></div>`
+    : "";
+}
+
 function renderTags() {
   const list = [...tags.values()].sort((a, b) => (a.alias || a.mac).localeCompare(b.alias || b.mac));
+  renderAlerts(list);
   $("#tags").innerHTML = list.length ? list.map(tagCard).join("")
     : `<div class="empty">No tags yet. They appear here when they check in with a hub.</div>`;
   updateSummary();
@@ -362,6 +407,7 @@ function updateTag(t) {
   const oi = old.querySelector(".preview img"), ni = neu.querySelector(".preview img");
   if (oi && ni && oi.getAttribute("src") === ni.getAttribute("src")) ni.replaceWith(oi);
   old.replaceWith(neu);
+  renderAlerts([...tags.values()]);
   updateSummary();
 }
 
@@ -372,6 +418,7 @@ $("#tags").addEventListener("click", async (e) => {
   const t = tags.get(mac);
   const act = b.dataset.act;
   if (act === "settings") return openTagDialog(t);
+  if (act === "upload") { uploadMac = mac; return $("#imgfile").click(); }
   if (act === "del" && !confirm(`Delete ${t.alias || mac} from the database? It comes back when it checks in again.`)) return;
   if ((act === "reboot" || act === "scan") && !confirm(`Send "${act}" to ${t.alias || mac}?`)) return;
   const r = await post("tag_cmd", { mac, cmd: act });
@@ -480,6 +527,70 @@ $("#tagdlg").addEventListener("close", () => {
   const f = $("#tagform");
   post("save_cfg", { mac: dlgMac, alias: f.alias.value, rotate: f.rotate.value, lut: f.lut.value, invert: f.invert.value });
 });
+
+// --- image upload from the browser: scale and crop to the tag's size, send as JPEG ---
+let uploadMac = null;
+$("#imgfile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  const t = tags.get(uploadMac);
+  if (!file || !t) return;
+  const tt = await tagType(t.hwType);
+  if (!tt) return toast("Unknown tag type");
+  let w = tt.width, h = tt.height;
+  if (t.rotate % 2) [w, h] = [h, w];
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  try { await img.decode(); } catch (err) { return toast("Can't read that image"); }
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, w, h);
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  URL.revokeObjectURL(img.src);
+  const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.95));
+  const fd = new FormData();
+  fd.append("mac", t.mac);
+  fd.append("dither", "1");
+  fd.append("image", blob, "upload.jpg");
+  try {
+    const r = await fetch(url("imgupload"), { method: "POST", body: fd });
+    toast(await r.text());
+  } catch (err) { toast("Failed: " + err.message); }
+});
+
+// --- backup, restore, import, variables ---
+$("#backuplink").href = url("backup_db");
+$("#restorebtn").addEventListener("click", () => $("#restorefile").click());
+$("#restorefile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  try {
+    const r = await fetch(url("restore_db"), { method: "POST", body: fd });
+    toast(await r.text());
+    loadTags();
+  } catch (err) { toast("Failed: " + err.message); }
+});
+$("#importform").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  toast("Importing…");
+  await post("api/import_ap", { host: e.target.host.value });
+  loadTags();
+});
+async function loadVars() {
+  try {
+    const v = await (await fetch(url("api/vars"))).json();
+    const keys = Object.keys(v).sort();
+    $("#vars").innerHTML = keys.length ? keys.map((k) => `<tr><td>${esc(k)}</td><td>${esc(v[k])}</td></tr>`).join("")
+      : `<tr><td class="muted">No variables set.</td></tr>`;
+  } catch (e) { /* ignore */ }
+}
 
 // --- hubs ---
 function hubCard(h) {

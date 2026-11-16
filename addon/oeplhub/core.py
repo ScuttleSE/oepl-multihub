@@ -104,6 +104,11 @@ class Core:
             self.hubs.append(hub)
         self._stop = threading.Event()
         self.fonts = None
+        self.vars_path = os.path.join(data_dir, "variables.json")
+        self.variables = {}
+        if os.path.exists(self.vars_path):
+            with open(self.vars_path) as f:
+                self.variables = json.load(f)
 
     # --- lifecycle -------------------------------------------------------------------------------
 
@@ -627,7 +632,7 @@ class Core:
 
         try:
             img, toggled = jsondraw.render(elements, tt.width, tt.height, self.fonts, image_loader=load_image,
-                                           log=self.ws_err)
+                                           log=self.ws_err, variables=dict(self.variables))
             if toggled:
                 tt = copy.copy(tt)
                 tt.rotatebuffer = 1 - tt.rotatebuffer % 2
@@ -640,6 +645,105 @@ class Core:
         self.queue_data(mac, data_type, data, imageenc.data_type_arg(lut=t.lut), self.max_sleep(ttl),
                         f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending")
         return 200, "Ok, saved"
+
+    # --- variables for JSON templates (/set_var, /set_vars, checkVars) ---------------------------
+
+    def set_vars(self, values: dict):
+        changed = [k for k, v in values.items() if self.variables.get(k) != v]
+        if not changed:
+            return
+        with self.lock:
+            self.variables.update(values)
+            with open(self.vars_path + ".tmp", "w") as f:
+                json.dump(self.variables, f, indent=1)
+            os.replace(self.vars_path + ".tmp", self.vars_path)
+            redraw = []
+            for t in self.db.tags.values():
+                if t.contentMode != 19:
+                    continue
+                p = os.path.join(self.current_dir, f"{t.mac}.json")
+                if not os.path.isfile(p):
+                    continue
+                with open(p) as f:
+                    text = f.read()
+                if any("{" + k + "}" in text for k in changed):
+                    try:
+                        ttl = int(json.loads(t.modecfgjson or "{}").get("interval", 0))
+                    except (ValueError, AttributeError):
+                        ttl = 0
+                    redraw.append((t.mac, text, ttl))
+        for mac, text, ttl in redraw:
+            self.ws_log(f"{mac} redrawn: variable changed")
+            self.json_upload(mac, text, ttl)
+
+    # --- backup, restore, import from a stock AP ---------------------------------------------------
+
+    def backup(self) -> bytes:
+        with self.lock:
+            return json.dumps([t.to_store() for t in self.db.tags.values()], indent=1).encode()
+
+    def restore(self, records) -> int:
+        """Merge tag records (our backup or a stock AP's tagDB.json). User settings come from the records; for
+        tags we already know, our live state (hub, signal, current image) stays. Returns the number of tags."""
+        from .tagdb import Tag
+        n = 0
+        with self.lock:
+            for d in records:
+                if not isinstance(d, dict) or not d.get("mac") or d.get("isexternal"):
+                    continue
+                new = Tag.from_store(d)
+                t = self.db.get(new.mac)
+                if t is None:
+                    new.hub = ""
+                    new.pending = 0
+                    self.db.tags[new.mac] = new
+                else:
+                    for k in ("alias", "rotate", "lut", "invert"):
+                        if k in d:
+                            setattr(t, k, getattr(new, k))
+                    if not t.lastseen:
+                        for k in ("hwType", "ver", "lastseen", "batteryMv", "RSSI", "LQI", "temperature",
+                                  "updatecount", "updatelast"):
+                            setattr(t, k, getattr(new, k))
+                n += 1
+            self.db.dirty = True
+        for mac in list(self.db.tags):
+            self.ws_tag(mac)
+        self.ws_log(f"restored {n} tags")
+        return n
+
+    def import_from_ap(self, host: str):
+        """Fetch a stock AP's tag DB and current images. Returns (status, text)."""
+        host = host.strip().rstrip("/")
+        base = host if host.startswith(("http://", "https://")) else "http://" + host
+        try:
+            with urllib.request.urlopen(base + "/backup_db", timeout=30) as r:
+                records = json.load(r)
+        except (OSError, ValueError) as e:
+            return 502, f"Error: could not read the tag DB from {host}: {e}"
+        n = self.restore(records)
+        images = 0
+        for d in records:
+            mac = str(d.get("mac", "")).upper()
+            t = self.db.get(mac)
+            dest = os.path.join(self.current_dir, f"{mac}.raw")
+            if t is None or os.path.exists(dest) or not d.get("imgtype"):
+                continue
+            try:
+                with urllib.request.urlopen(f"{base}/current/{mac}.raw", timeout=15) as r:
+                    data = r.read()
+            except OSError:
+                continue
+            with open(dest, "wb") as f:
+                f.write(data)
+            with self.lock:
+                t.imgtype = d["imgtype"]
+                if d.get("hash"):
+                    t.md5 = bytes.fromhex(d["hash"])
+                self.db.dirty = True
+            self.ws_tag(mac)
+            images += 1
+        return 200, f"Ok, imported {n} tags and {images} images from {host}"
 
     # --- tag firmware (the stock UI's "auto update", content mode 5) -----------------------------
 

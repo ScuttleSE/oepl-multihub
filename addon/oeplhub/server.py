@@ -255,6 +255,54 @@ class Server:
             status, text = await self.run(self.core.tag_fw_update, mac)
         return web.Response(status=status, text=text)
 
+    async def set_var(self, request):
+        form = await request.post()
+        if "key" not in form or "val" not in form:
+            return web.Response(status=500, text="param error")
+        await self.run(self.core.set_vars, {form["key"]: form["val"]})
+        return web.Response(text="Ok, saved")
+
+    async def set_vars(self, request):
+        form = await request.post()
+        if "json" not in form:
+            return web.Response(status=400, text="No 'json' parameter found in request")
+        try:
+            values = json.loads(form["json"])
+            assert isinstance(values, dict)
+        except (ValueError, AssertionError):
+            return web.Response(status=400, text="Failed to parse JSON")
+        values = {k: v if isinstance(v, str) else json.dumps(v) for k, v in values.items()}
+        await self.run(self.core.set_vars, values)
+        return web.Response(text="JSON uploaded and processed")
+
+    async def api_vars(self, request):
+        return web.json_response(self.core.variables)
+
+    async def backup_db(self, request):
+        data = await self.run(self.core.backup)
+        return web.Response(body=data, content_type="application/json",
+                            headers={"Content-Disposition": 'attachment; filename="tagDB.json"'})
+
+    async def restore_db(self, request):
+        form = await request.post()
+        f = next((v for v in form.values() if hasattr(v, "file")), None)
+        if f is None:
+            return web.Response(status=400, text="Error: no file")
+        try:
+            records = json.loads(f.file.read())
+            assert isinstance(records, list)
+        except (ValueError, AssertionError):
+            return web.Response(status=400, text="Error: not a tag DB file")
+        n = await self.run(self.core.restore, records)
+        return web.Response(text=f"Ok, restored {n} tags.")
+
+    async def api_import_ap(self, request):
+        form = await request.post()
+        if not form.get("host"):
+            return web.Response(status=400, text="Error: host missing")
+        status, text = await self.run(self.core.import_from_ap, form["host"])
+        return web.Response(status=status, text=text)
+
     async def api_hubs(self, request):
         return web.json_response(self.core.hub_status())
 
@@ -277,6 +325,12 @@ class Server:
             web.get("/api/hubs", self.api_hubs),
             web.get("/api/preview/{mac}", self.api_preview),
             web.post("/jsonupload", self.jsonupload),
+            web.post("/set_var", self.set_var),
+            web.post("/set_vars", self.set_vars),
+            web.get("/api/vars", self.api_vars),
+            web.get("/backup_db", self.backup_db),
+            web.post("/restore_db", self.restore_db),
+            web.post("/api/import_ap", self.api_import_ap),
             web.get("/api/tag_fw", self.api_tag_fw),
             web.post("/api/tag_fw", self.api_tag_fw_update),
         ])

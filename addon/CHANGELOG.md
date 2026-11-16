@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Backup tab: download and restore the tag database. Backups from a stock access point (`tagDB.json`) work too.
+- Import from a running stock access point: tags, names, settings and current images.
+- Variables for JSON templates (`/set_var`, `/set_vars`). Tags that use a variable are redrawn when it changes.
+- Upload an image to a tag from the browser. It is scaled and cropped to the tag's size.
+- Alerts above the tag list: low battery, overdue tags and rejected firmware updates.
+
 ## 0.3.0
 
 - Tag settings dialog in the panel: name, rotation, refresh mode (LUT) and invert colours.

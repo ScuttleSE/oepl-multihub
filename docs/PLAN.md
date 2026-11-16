@@ -323,7 +323,21 @@ OEPL channel plan:
          stock UI does.
        - `addon/CHANGELOG.md` (HA shows it on update). Bump `version` in `config.yaml` and add an entry for
          every release.
-     - Not yet: other content modes (clock, weather, …), browser image upload, DB export/import.
+     - **Addon 0.4.0** (16 Nov), tested against simulated hubs:
+       - `/backup_db` (our `tagDB.json`, same format as the stock one) and `/restore_db`. Restore **merges**: tags
+         in the file are added, or get alias/rotate/lut/invert back, and other tags stay. The stock AP's restore
+         replaces the whole DB.
+       - `POST /api/import_ap host=…`: reads a stock AP's `/backup_db`, merges it, and copies `/current/<MAC>.raw`
+         for tags that have no image here yet. Tested with a second addon instance standing in for the AP.
+       - `/set_var`, `/set_vars`, `GET /api/vars`. Variables are kept in `data/variables.json`; the stock AP keeps
+         them in RAM only. On a change, content-mode-19 tags whose JSON contains `{key}` are redrawn, like
+         `checkVars()`.
+       - Panel: an Upload image button on each card (the browser scales and crops to the tag size and rotation,
+         then sends a JPEG to `/imgupload` with dither 1), alerts above the tag list (low battery, overdue,
+         wakeupReason 0xE0), and a Backup tab (download, restore, import, variables).
+     - Groups: not needed in the addon. The HA integration's actions accept `label_id` and `area_id` targets (see
+       `services.py`), so HA labels serve as tag groups.
+     - Not yet / skipped: other content modes (clock, weather, …), tag mirroring, the stock drawing tool.
      - **Panel title:** HA only re-reads `panel_title` when it registers the panel. After a change, toggle "Show in
        sidebar" or restart HA.
    - tag DB, kept in `/data`
