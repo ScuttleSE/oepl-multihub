@@ -173,6 +173,16 @@ OEPL channel plan:
    - log `CHECKIN`s from tag 1
    
    Design it for several hubs from the start (one link object per hub).
+   - **Written and tested against a simulated hub** (16 Nov). Not yet tested against a real C6.
+     - `oeplhub/` (stdlib only, reused by the addon later): `v2proto.py` (framing, structs), `transport.py`
+       (serial: native USB or `uart:` adapter, and TCP), `link.py` (`HubLink`: startup, requests with retries,
+       chunk window, events with ACK and dedup, heartbeat, 3 missed means link lost), `fakehub.py` (simulated radio
+       with fake tags, `--loss` and `--jitter`).
+     - `tools/hubtool.py monitor HUB... --channel 26 25`, `push HUB --mac --file`, `fakehub`.
+     - On connect it tries `HELLO` first, so it can pick up a radio that is still in v2 (host restart within 5 s).
+       Otherwise it does the ASCII startup.
+     - Works against the simulated hub with 5% frame loss each way and 15 ms jitter, in both cache-preload and
+       `DATA_NEEDED` modes.
 3. [ ] **Push one image** to tag 1: `SET_PENDING` with `DATA_FOLLOWS`, then `DATA_CHUNK`s, and wait for `XFER_COMPLETE`.
    Use `94.json` for the format. Check against `newproto.cpp` and `v2transport.cpp` (the dataType, the image header, and
    whether G5 or raw is used).
@@ -250,6 +260,8 @@ Notes:
 
 ## Open questions
 
+- Tag 1's MAC is written as `EF70A4D777DF` (12 hex digits), but OEPL MACs are 8 bytes (16 hex digits). What is the
+  full MAC? The simulated hub uses `0000EF70A4D777DF` for now.
 - Radio behaviour on a TCP drop, for the Wi-Fi build. Probably the same as host loss (above). Decide whether `wifi_link.c`
   should reset to ASCII at once when the client disconnects.
 - Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?
