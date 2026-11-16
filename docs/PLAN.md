@@ -211,6 +211,8 @@ OEPL channel plan:
   The OEPL radio code would need a port from ESP-IDF to Zephyr or the MCUXpresso SDK.
 - **Hardware:** FRDM-RW612 dev board (large, has Ethernet and a debugger). Modules: u-blox IRIS-W101/W106
   (14.6 × 16.8 / 20.9 mm), Murata Type 2FR (12 × 11 mm), CEL CMP4612. No small hobby board found yet.
+- **First step if resumed:** on a FRDM-RW612, check whether Spinel can send and receive raw OEPL frames on one
+  channel (with auto-ACK) before porting anything.
 
 ## Tags
 
