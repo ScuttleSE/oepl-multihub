@@ -5,7 +5,6 @@ RUN apk add --no-cache python3 py3-pip py3-aiohttp py3-pillow
 
 WORKDIR /app
 COPY oeplhub /app/oeplhub
-COPY web /app/web
 COPY tagtypes /app/tagtypes
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
