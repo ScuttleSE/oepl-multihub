@@ -309,7 +309,15 @@ OEPL channel plan:
      - the stock UI's sections (tags, AP/hub settings, logs, …) become HA-style tabs at the top of the panel
      - follows the HA theme (light/dark, colours) where the ingress iframe allows it
      - shows the hubs too: link state, channel, stats
-   - HA addon packaging: `config.yaml`, `Dockerfile`, ingress
+   - **HA addon packaging done** (16 Nov). The repo is an addon repository (`repository.yaml`; HACS can't install
+     addons). The addon lives in `addon/` (code moved there, since HA builds from the addon folder): `config.yaml`
+     (slug `oepl_multihub`, options `hubs: [{spec, channel}]` and `verbose`, ingress on 8080, port 80 on the host for
+     the integration, `uart`/`usb` for USB hubs), `build.yaml` (HA Alpine base 3.20), `Dockerfile` (aiohttp and
+     Pillow from Alpine packages), `run.sh` (`--config /data/options.json`, data in `/data`). Run locally with
+     `PYTHONPATH=addon python -m oeplhub.server …`.
+   - **Works end to end from the installed addon** (16 Nov): builds and installs on the user's HA, ingress panel shows
+     the placeholder page. With a simulated hub on the dev PC (`192.168.0.3:16650`, two fake 0x41 tags) in the
+     options and the integration added with the HA host as AP address: `drawcustom` → pending → transfer complete.
 8. [ ] **Easy install for other users** (after step 4):
    - Publish two hub variants: **Wi-Fi** (the normal case) and **USB** (a hub plugged into the HA machine; no Wi-Fi,
      so no coexistence issues). The UART variant is the stock build for S3-based APs and stays only as the upstream
