@@ -208,6 +208,20 @@ OEPL channel plan:
      comparison, because the source JPEG is gone from the AP.
 4. [ ] **C6 firmware Wi-Fi transport** (`wifi_link.c`, Kconfig switch, mDNS, power-save off). Point `hubtool.py` at
    `oepl-hub-1.local:6639` and repeat steps 2–3.
+   - **Written and compiles** (16 Nov, branch `host-link`): `main/host_wifi.c`, Kconfig `OEPL_HOST_LINK_WIFI`.
+     Not tested on hardware.
+     - Build: `idf.py -B build-wifi -D SDKCONFIG=sdkconfig.wifi -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-wifi" build`.
+       Set SSID and password with `menuconfig` (`OEPL config`) or in a local defaults file. Never commit them.
+       If they're empty, the hub uses the credentials stored in NVS (for Improv later).
+     - STA mode, `WIFI_PS_NONE`, auto-reconnect. mDNS hostname `oepl-hub-xxxx` (last 2 MAC bytes; can be set in
+       Kconfig) plus service `_oepl-hub._tcp`. TCP server on port 6639, one client, a new client replaces the old one.
+       TCP_NODELAY, keepalive 5+2×3 s.
+     - On client disconnect the radio keeps its v2 state and falls back to ASCII after 5 s, as on UART.
+       `HubLink.connect()` handles both cases (it tries `HELLO` first).
+     - Own partition table `partitions-wifi.csv`: nvs, otadata, 2 × 1.8 MB app slots (ready for OTA), no littlefs (the
+       radio doesn't use it). Built with `-Os`: 0xDB290 bytes, 47% of a slot. With the stock 1 MB partition and
+       `-Og` it was 95%.
+     - Since the build uses `-Os` instead of stock `-Og`, check the radio timing (`lateMs` in `BLOCK_SERVED`).
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
@@ -288,8 +302,7 @@ Notes:
 
 ## Open questions
 
-- Radio behaviour on a TCP drop, for the Wi-Fi build. Probably the same as host loss (above). Decide whether `wifi_link.c`
-  should reset to ASCII at once when the client disconnects.
+- Wi-Fi build: should a TCP disconnect reset the radio to ASCII at once, instead of after 5 s? Not needed so far.
 - Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?
 - How do tags rank multiple APs during a scan?
 - Exact field formats in the `sys`, `tags` and `get_db` JSON: copy them from `web.cpp` and `tag_db.cpp`.
