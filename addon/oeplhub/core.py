@@ -82,6 +82,10 @@ class Core:
         self.notify = notify
         self.lock = threading.RLock()
         self.queues: dict[str, list[Item]] = {}
+        self.pending_path = os.path.join(data_dir, "pending.json")
+        self.pending_dir = os.path.join(data_dir, "pending")
+        os.makedirs(self.pending_dir, exist_ok=True)
+        self._load_queues()
         self.started = time.monotonic()
         self.ws_clients = 0
         self.cfg_path = os.path.join(data_dir, "apconfig.json")
@@ -129,6 +133,69 @@ class Core:
                     self.db.save()
                 except OSError as e:
                     log.error("saving the tag DB: %s", e)
+
+    # --- pending items on disk -------------------------------------------------------------------
+
+    def _load_queues(self):
+        if not os.path.exists(self.pending_path):
+            return
+        try:
+            with open(self.pending_path) as f:
+                stored = json.load(f)
+        except (OSError, ValueError) as e:
+            log.error("reading %s: %s", self.pending_path, e)
+            return
+        for mac, items in stored.items():
+            q = []
+            for d in items:
+                data = b""
+                if d.get("has_data"):
+                    try:
+                        with open(os.path.join(self.pending_dir, f"{d['ver']:016X}.bin"), "rb") as f:
+                            data = f.read()
+                    except OSError:
+                        log.warning("%s: data for pending item %016X is missing, dropped", mac, d["ver"])
+                        continue
+                q.append(Item(data_type=d["data_type"], arg=d["arg"], ver=d["ver"], data=data,
+                              next_checkin=d["next_checkin"], filename=d["filename"], cmd_size=d["cmd_size"]))
+            if q:
+                self.queues[mac] = q
+                t = self.db.get(mac)
+                if t:
+                    t.pending = len(q)
+        log.info("restored pending items for %d tags", len(self.queues))
+
+    def _save_queues(self):
+        """Call with self.lock held."""
+        try:
+            self._write_queues()
+        except OSError as e:
+            log.error("saving pending items: %s", e)
+
+    def _write_queues(self):
+        stored, keep = {}, set()
+        for mac, q in self.queues.items():
+            if not q:
+                continue
+            stored[mac] = []
+            for i in q:
+                if i.data:
+                    name = f"{i.ver:016X}.bin"
+                    keep.add(name)
+                    p = os.path.join(self.pending_dir, name)
+                    if not os.path.exists(p):
+                        with open(p + ".tmp", "wb") as f:
+                            f.write(i.data)
+                        os.replace(p + ".tmp", p)
+                stored[mac].append({"data_type": i.data_type, "arg": i.arg, "ver": i.ver, "has_data": bool(i.data),
+                                    "next_checkin": i.next_checkin, "filename": i.filename,
+                                    "cmd_size": i.cmd_size})
+        with open(self.pending_path + ".tmp", "w") as f:
+            json.dump(stored, f, indent=1)
+        os.replace(self.pending_path + ".tmp", self.pending_path)
+        for name in os.listdir(self.pending_dir):
+            if name not in keep:
+                os.remove(os.path.join(self.pending_dir, name))
 
     def hub_by_name(self, name):
         return next((h for h in self.hubs if h.name == name), None)
@@ -315,6 +382,7 @@ class Core:
                 t.wakeupReason = 0
                 self.db.dirty = True
             more = bool(q)
+            self._save_queues()
         if replaced or more:
             self._announce(mac, only=hub)
         elif head is not None:
@@ -326,6 +394,7 @@ class Core:
         self.ws_err(f"< {mac} xfer timeout")
         with self.lock:
             self.queues[mac] = []
+            self._save_queues()
             t = self.db.get(mac)
             if t:
                 t.pending_idle = 60
@@ -387,6 +456,7 @@ class Core:
             if item.plain_image:
                 q[:] = [i for i in q if not i.plain_image]
             q.append(item)
+            self._save_queues()
             t = self.db.get(mac)
             if t:
                 t.pending = len(q)
@@ -470,6 +540,7 @@ class Core:
             self.db.delete(mac)
             with self.lock:
                 self.queues.pop(mac, None)
+                self._save_queues()
         elif cmd == "purge":
             ts = now()
             for tag in list(self.db.tags.values()):
@@ -479,6 +550,7 @@ class Core:
             self._cancel_everywhere(mac)
             with self.lock:
                 self.queues[mac] = []
+                self._save_queues()
                 t.pending = 0
             self.ws_tag(mac)
         elif cmd == "refresh":
