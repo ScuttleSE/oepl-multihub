@@ -185,8 +185,12 @@ OEPL channel plan:
 7. [ ] **Addon:**
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
-   - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration and the stock
-     `wwwroot/` UI work against it
+   - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it
+   - **Own web UI, styled like Home Assistant (not a copy of the stock `wwwroot/`):**
+     - an ingress panel, so the hub shows up as an item in HA's left sidebar
+     - the stock UI's sections (tags, AP/hub settings, logs, …) become HA-style tabs at the top of the panel
+     - follows the HA theme (light/dark, colours) where the ingress iframe allows it
+     - shows the hubs too: link state, channel, stats
    - HA addon packaging: `config.yaml`, `Dockerfile`, ingress
 8. [ ] **Easy install for other users** (after step 4):
    - GitHub Actions builds the hub firmware and attaches a merged `.bin` (flashed at 0x0) to each release.
