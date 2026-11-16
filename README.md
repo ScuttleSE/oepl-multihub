@@ -186,6 +186,22 @@ OEPL channel plan:
 3. [ ] **Push one image** to tag 1: `SET_PENDING` with `DATA_FOLLOWS`, then `DATA_CHUNK`s, and wait for `XFER_COMPLETE`.
    Use `94.json` for the format. Check against `newproto.cpp` and `v2transport.cpp` (the dataType, the image header, and
    whether G5 or raw is used).
+   - **Encoder written** (`oeplhub/imageenc.py`, a port of `colorquant.h` and `makeimage.cpp`; needs Pillow).
+     `hubtool.py push HUB --mac … --image x.png --tagtype 94.json --tag-fw 0x…` works against the simulated hub.
+   - Format for 0x94 (from the stock AP):
+     - **Palette:** index = order in `colortable`: 0 white, 1 black, 2 red, 3 yellow. Pixels are quantised from
+       RGB565.
+     - **Bit planes:** plane 0 = index 1 or 3, plane 1 = index 2 or 3 (so yellow is set in both). Row-major, MSB
+       first, no row padding, `ceil(w*h/8)` bytes each.
+     - **dataType:** `0x30` ZLIB if tag fw ≥ `zlib_compression` (0x27). Otherwise `0x21` RAW_2BPP (plane 0 then
+       plane 1), or `0x20` if nothing is red or yellow. 94.json has no `g5_compression`, so no G5 (not implemented).
+     - **ZLIB file:** `u32 uncompressed size` + a zlib stream with a **4 KB window** (`wbits=12`, header `48 C7`, the
+       same bytes as the AP) of `[6, w u16, h u16, bpp]` + plane 0 + plane 1.
+     - **dataVer:** first 8 bytes of the file's MD5, little-endian.
+     - **dataTypeArgument:** `lut:2 | preload:1 | specialType:5`, LSB first.
+     - The integration's default dither is ordered (2). The AP decodes JPEG with TJpgDec, so pixels may differ
+       slightly from Pillow. Byte-identical files aren't expected.
+   - Open: read tag 1's firmware version from a real check-in (that decides zlib).
 4. [ ] **C6 firmware Wi-Fi transport** (`wifi_link.c`, Kconfig switch, mDNS, power-save off). Point `hubtool.py` at
    `oepl-hub-1.local:6639` and repeat steps 2–3.
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
@@ -264,5 +280,4 @@ Notes:
   should reset to ASCII at once when the client disconnects.
 - Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?
 - How do tags rank multiple APs during a scan?
-- Exact image payload format and dataType for the tags: check `newproto.cpp` and `makeimage.cpp`.
 - Exact field formats in the `sys`, `tags` and `get_db` JSON: copy them from `web.cpp` and `tag_db.cpp`.

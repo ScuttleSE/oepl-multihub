@@ -6,6 +6,7 @@ host[:port] (Wi-Fi, port 6639 by default).
 
   hubtool.py monitor HUB [HUB ...] [--channel 26 25 ...]   log check-ins and events
   hubtool.py push HUB --mac MAC --file F [--type 0x20]     send a file to one tag, wait for the result
+  hubtool.py push HUB --mac MAC --image I --tagtype J      encode an image like the stock AP and send it
   hubtool.py fakehub [--port 6639] [--tag MAC ...]          run a simulated hub
 """
 
@@ -104,9 +105,18 @@ def cmd_monitor(args):
 
 
 def cmd_push(args):
-    data = open(args.file, "rb").read()
+    if args.image:
+        from PIL import Image
+        from oeplhub import imageenc
+        tt = imageenc.TagType.load(args.tagtype)
+        args.type, data = imageenc.encode(Image.open(args.image), tt, dither=args.dither, tag_fw=args.tag_fw)
+        args.arg = imageenc.data_type_arg(lut=args.lut)
+        log.info("%s: %dx%d -> type %02X, %d bytes", args.image, tt.width, tt.height, args.type, len(data))
+        ver = imageenc.data_ver(data)
+    else:
+        data = open(args.file, "rb").read()
+        ver = args.ver if args.ver is not None else int(time.time() * 1000)
     mac = v2.mac_bytes(args.mac)
-    ver = args.ver if args.ver is not None else int(time.time() * 1000)
     done = threading.Event()
     result = {}
 
@@ -160,7 +170,14 @@ def main():
     u = sub.add_parser("push")
     u.add_argument("hub")
     u.add_argument("--mac", required=True)
-    u.add_argument("--file", required=True)
+    src = u.add_mutually_exclusive_group(required=True)
+    src.add_argument("--file", help="send this file as is")
+    src.add_argument("--image", help="encode this image (PNG/JPEG, tag size) like the stock AP")
+    u.add_argument("--tagtype", help="tagtype JSON, with --image")
+    u.add_argument("--tag-fw", type=lambda s: int(s, 0), default=0,
+                   help="tag firmware version, with --image: zlib when >= the tagtype's zlib_compression")
+    u.add_argument("--dither", type=int, default=2, help="0 none, 1 Burkes, 2 ordered (default)")
+    u.add_argument("--lut", type=int, default=0, help="with --image: dataTypeArgument lut bits")
     u.add_argument("--type", type=lambda s: int(s, 0), default=0x20, help="dataType (default 0x20)")
     u.add_argument("--arg", type=lambda s: int(s, 0), default=0, help="dataTypeArgument")
     u.add_argument("--ver", type=lambda s: int(s, 0))
