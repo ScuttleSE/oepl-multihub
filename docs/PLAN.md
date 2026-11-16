@@ -121,7 +121,7 @@ Radio side: `main/v2link.c`, `main/main.c`. S3 side: `src/v2transport.cpp`.
   option (`OEPL_HOST_LINK_UART` / `OEPL_HOST_LINK_WIFI`):
   - **Baud switch:** `uart_switch_speed()` does nothing, and the host simply continues with frames after `FRM1`/`ACK>`.
   - **`uart_wait_tx_done` call:** needs a guard or an equivalent.
-  - **Wi-Fi:** STA mode with `WIFI_PS_NONE`. mDNS name `oepl-hub-N.local`, TCP port **6639**.
+  - **Wi-Fi:** STA mode with `WIFI_PS_MIN_MODEM` (modem sleep, leaves the radio to 802.15.4). mDNS name `oepl-hub-N.local`, TCP port **6639**.
   - **Debug output:** stays on the USB console.
   - **Client disconnect:** the radio should behave as after a host restart. Check what v2link does on a new `HELLO`.
 - Concerns to verify:
@@ -296,7 +296,8 @@ OEPL channel plan:
      - Build: `idf.py -B build-wifi -D SDKCONFIG=sdkconfig.wifi -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-wifi" build`.
        Set SSID and password with `menuconfig` (`OEPL config`) or in a local defaults file. Never commit them.
        If they're empty, the hub uses the credentials stored in NVS (for Improv later).
-     - STA mode, `WIFI_PS_NONE`, auto-reconnect. mDNS hostname `oepl-hub-xxxx` (last 2 MAC bytes; can be set in
+     - STA mode, `WIFI_PS_MIN_MODEM` (changed from `WIFI_PS_NONE` on 16 Nov so 802.15.4 gets the radio between
+       beacons; host→hub latency up to one DTIM interval, check in step 5), auto-reconnect. mDNS hostname `oepl-hub-xxxx` (last 2 MAC bytes; can be set in
        Kconfig) plus service `_oepl-hub._tcp`. TCP server on port 6639, one client, a new client replaces the old one.
        TCP_NODELAY, keepalive 5+2×3 s.
      - On client disconnect the radio keeps its v2 state and falls back to ASCII after 5 s, as on UART.
