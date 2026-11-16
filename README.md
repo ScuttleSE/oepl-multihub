@@ -273,6 +273,17 @@ OEPL channel plan:
    - A GitHub Pages site with **ESP Web Tools**: an "Install" button that flashes over USB from Chrome or Edge.
    - **Improv Serial** in the hub firmware, so the install page can set the Wi-Fi details right after flashing,
      with no Wi-Fi details compiled in.
+   - **Done and live** (16 Nov), not yet tested with a board: **https://scuttlese.github.io/oepl-multihub/**
+     - `.github/workflows/firmware.yml` builds the fork at the commit in `firmware/upstream-ref` with
+       `firmware/build.sh` (`espressif/esp-idf-ci-action`, IDF v5.5.5), merges `hub-wifi.bin` and `hub-usb.bin`
+       (flash size fixed to 4 MB), writes the ESP Web Tools manifests, and deploys `web/` to Pages. It runs on
+       pushes to `firmware/`, `web/` or the workflow, or by hand. **After changing the fork, update
+       `firmware/upstream-ref`.**
+     - The manifests set `new_install_prompt_erase`. Erasing is recommended, because the Wi-Fi build has its own
+       partition table.
+     - Improv Serial (`main/improv.c` in the fork, `OEPL_IMPROV_SERIAL`, on by default in the Wi-Fi build) on the
+       native USB port: state, device info, Wi-Fi scan, and Wi-Fi settings (stored in NVS by the driver, 20 s to
+       get an IP). In the Wi-Fi build the debug log is on UART0 only (TX/RX pins).
 9. [ ] **Later:** tag OTA (same block mechanism), C6 radio OTA over Wi-Fi, content modes, an upstream PR for the Wi-Fi
    transport.
 
