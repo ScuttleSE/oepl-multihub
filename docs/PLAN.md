@@ -297,7 +297,9 @@ OEPL channel plan:
        Set SSID and password with `menuconfig` (`OEPL config`) or in a local defaults file. Never commit them.
        If they're empty, the hub uses the credentials stored in NVS (for Improv later).
      - STA mode, `WIFI_PS_MIN_MODEM` (changed from `WIFI_PS_NONE` on 16 Nov so 802.15.4 gets the radio between
-       beacons; host→hub latency up to one DTIM interval, check in step 5), auto-reconnect. mDNS hostname `oepl-hub-xxxx` (last 2 MAC bytes; can be set in
+       beacons; host→hub latency up to one DTIM interval, check in step 5), auto-reconnect.
+     - 802.15.4 coex priority raised in `radio.c` (`esp_ieee802154_set_coex_config`): idle LOW, txrx HIGH, txrx_at
+       HIGH (IDF default IDLE/LOW/MIDDLE). Idle listening isn't HIGH, or Wi-Fi would never get the radio. mDNS hostname `oepl-hub-xxxx` (last 2 MAC bytes; can be set in
        Kconfig) plus service `_oepl-hub._tcp`. TCP server on port 6639, one client, a new client replaces the old one.
        TCP_NODELAY, keepalive 5+2×3 s.
      - On client disconnect the radio keeps its v2 state and falls back to ASCII after 5 s, as on UART.
