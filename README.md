@@ -189,9 +189,26 @@ OEPL channel plan:
 9. [ ] **Later:** tag OTA (same block mechanism), C6 radio OTA over Wi-Fi, content modes, an upstream PR for the Wi-Fi
    transport.
 
+### Findings from the source (16 Nov 2026)
+
+- **Host link pins:** in stock firmware the host link is UART1 on GPIO, not the native USB. The default profile uses
+  TX GPIO3 and RX GPIO2 (`second_uart.h`). The native USB is only the debug console. So "C6 on USB with stock firmware"
+  needs a USB-UART adapter that can do 2 Mbaud, wired to GPIO2 and GPIO3.
+- **Host loss:** with no frames from the host for 5000 ms (`V2_LINK_LOST_MS` in `main.c`), the radio calls `v2Stop()`
+  and goes back to ASCII at 115200. Queued events are dropped, because the host re-sends everything after it negotiates
+  again. Pending data and the block cache stay. A new host must do `RDY?`/`NFO?`/`FRM1` again.
+- **Second `HELLO`** (while still in v2): it is answered with `HELLO_REPLY` and is never treated as a duplicate.
+  It does not reset the radio's seq or its event queue. A clean reconnect is: go silent for more than 5 s, then do ASCII
+  startup again.
+- **Events:** the radio sends one event at a time (stop-and-wait) and waits 30 ms for the ACK, with 3 retries. After
+  that it marks the link down and sends again when the next host frame arrives. Nothing is lost, so a slow ACK over Wi-Fi
+  only costs time. The host must ACK every event except `LOG`, and must drop a repeated seq after ACKing it.
+- **The S3** treats 3 missed heartbeats as a lost link.
+
 ## Open questions
 
-- Radio behaviour on host loss: missed heartbeats, TCP drop, a second `HELLO`.
+- Radio behaviour on a TCP drop, for the Wi-Fi build. Probably the same as host loss (above). Decide whether `wifi_link.c`
+  should reset to ASCII at once when the client disconnects.
 - Is the 30 ms ACK timeout OK over Wi-Fi, or does the TCP build need a longer one?
 - How do tags rank multiple APs during a scan?
 - Exact image payload format and dataType for the tags: check `newproto.cpp` and `makeimage.cpp`.
