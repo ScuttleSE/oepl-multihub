@@ -181,7 +181,12 @@ OEPL channel plan:
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration and the stock
      `wwwroot/` UI work against it
    - HA addon packaging: `config.yaml`, `Dockerfile`, ingress
-8. [ ] **Later:** tag OTA (same block mechanism), C6 radio OTA over Wi-Fi, content modes, an upstream PR for the Wi-Fi
+8. [ ] **Easy install for other users** (after step 4):
+   - GitHub Actions builds the hub firmware and attaches a merged `.bin` (flashed at 0x0) to each release.
+   - A GitHub Pages site with **ESP Web Tools**: an "Install" button that flashes over USB from Chrome or Edge.
+   - **Improv Serial** in the hub firmware, so the install page can set the Wi-Fi details right after flashing,
+     with no Wi-Fi details compiled in.
+9. [ ] **Later:** tag OTA (same block mechanism), C6 radio OTA over Wi-Fi, content modes, an upstream PR for the Wi-Fi
    transport.
 
 ## Open questions
