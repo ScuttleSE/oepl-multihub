@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OEPL hub installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root { color-scheme: light dark; --accent: #03a9f4; }
+    body { font-family: Roboto, system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    h1 { font-weight: 400; }
+    .card { border: 1px solid #8884; border-radius: 12px; padding: 1rem 1.25rem; margin: 1rem 0; }
+    .card h2 { margin: 0 0 .25rem; font-size: 1.15rem; font-weight: 500; }
+    .muted { opacity: .7; font-size: .9rem; }
+    esp-web-install-button button[slot] { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: .6rem 1.2rem; font-size: 1rem; cursor: pointer; }
+    code { font-size: .9em; }
+  </style>
+</head>
+<body>
+  <h1>OEPL hub installer</h1>
+  <p>Flashes an ESP32-C6 as an OpenEPaperLink hub for the OEPL multihub Home Assistant addon. Use Chrome or Edge on
+    a computer, connect the C6 with a USB cable, then click Install. If the board isn't found, hold BOOT while
+    plugging it in.</p>
+
+  <div class="card">
+    <h2>Wi-Fi hub</h2>
+    <p>The normal choice: place the hub anywhere within Wi-Fi range. After flashing, the installer asks for your
+      Wi-Fi name and password. The hub then shows up as <code>oepl-hub-xxxx.local</code>, TCP port 6639.</p>
+    <esp-web-install-button manifest="firmware/manifest-wifi.json">
+      <button slot="activate">Install Wi-Fi hub</button>
+      <span slot="unsupported">Your browser can't do this: use Chrome or Edge on a computer.</span>
+      <span slot="not-allowed">This page must be opened over https.</span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="card">
+    <h2>USB hub</h2>
+    <p>For a hub plugged straight into the Home Assistant machine. No Wi-Fi involved.</p>
+    <esp-web-install-button manifest="firmware/manifest-usb.json">
+      <button slot="activate">Install USB hub</button>
+      <span slot="unsupported">Your browser can't do this: use Chrome or Edge on a computer.</span>
+      <span slot="not-allowed">This page must be opened over https.</span>
+    </esp-web-install-button>
+  </div>
+
+  <p class="muted">Firmware version <span id="v">…</span>. The tags keep their stock OpenEPaperLink firmware.
+    Source: <a href="https://github.com/ScuttleSE/oepl-multihub">ScuttleSE/oepl-multihub</a>.</p>
+  <script>
+    fetch("firmware/version.txt").then(r => r.ok ? r.text() : "unknown").then(t => document.getElementById("v").textContent = t.trim());
+  </script>
+</body>
+</html>

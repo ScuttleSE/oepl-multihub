@@ -1,0 +1,91 @@
+name: Hub firmware and installer
+
+# Builds the hub firmware (Wi-Fi and USB variants) from the OpenEPaperLink fork at the commit in
+# firmware/upstream-ref, and publishes it with the browser installer (web/) on GitHub Pages.
+
+on:
+  push:
+    branches: [main]
+    paths: ["firmware/**", "web/**", ".github/workflows/firmware.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the firmware ref
+        id: ref
+        run: |
+          echo "sha=$(tr -d '[:space:]' < firmware/upstream-ref)" >> "$GITHUB_OUTPUT"
+          echo "version=$(date -u +%Y.%m.%d)-$(tr -d '[:space:]' < firmware/upstream-ref | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ScuttleSE/OpenEPaperLink
+          ref: ${{ steps.ref.outputs.sha }}
+          path: upstream
+
+      - name: Version string for Improv
+        run: echo 'CONFIG_OEPL_HUB_FW_VERSION="${{ steps.ref.outputs.version }}"' > upstream/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/sdkconfig.ci
+
+      - name: Build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32c6
+          path: upstream/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP
+          command: >-
+            idf.py -B build-wifi -D SDKCONFIG=sdkconfig.wifi
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-wifi;sdkconfig.ci" build &&
+            idf.py -B build-usb -D SDKCONFIG=sdkconfig.usb
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-usb" build &&
+            for v in wifi usb; do (cd build-$v && sed 's/--flash_size detect/--flash_size 4MB/' flash_args > merge_args &&
+            python -m esptool --chip esp32c6 merge_bin -o ../hub-$v.bin @merge_args) || exit 1; done
+
+      - name: Assemble the site
+        run: |
+          fw=upstream/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP
+          mkdir -p _site/firmware
+          cp -r web/* _site/
+          cp "$fw/hub-wifi.bin" "$fw/hub-usb.bin" _site/firmware/
+          v="${{ steps.ref.outputs.version }}"
+          for variant in wifi usb; do
+            name="OEPL hub ($([ $variant = wifi ] && echo Wi-Fi || echo USB))"
+            cat > "_site/firmware/manifest-$variant.json" <<EOF
+          {
+            "name": "$name",
+            "version": "$v",
+            "new_install_prompt_erase": true,
+            "builds": [
+              { "chipFamily": "ESP32-C6", "parts": [ { "path": "hub-$variant.bin", "offset": 0 } ] }
+            ]
+          }
+          EOF
+          done
+          echo "$v" > _site/firmware/version.txt
+          ls -l _site _site/firmware
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
