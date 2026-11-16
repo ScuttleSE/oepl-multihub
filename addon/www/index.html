@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OEPL Multihub</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --primary-color: #03a9f4;
+    --primary-background-color: #fafafa;
+    --secondary-background-color: #e5e5e5;
+    --card-background-color: #fff;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --divider-color: rgba(0, 0, 0, .12);
+    --error-color: #db4437;
+    --warning-color: #ffa600;
+    --success-color: #43a047;
+    --app-header-background-color: var(--primary-background-color);
+    --app-header-text-color: var(--primary-text-color);
+    --ha-card-border-radius: 12px;
+    --text-on-primary: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not(.themed) {
+      --primary-background-color: #111;
+      --secondary-background-color: #282828;
+      --card-background-color: #1c1c1c;
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
+      --divider-color: rgba(225, 225, 225, .12);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: Roboto, Noto, "Segoe UI", system-ui, sans-serif; font-size: 14px;
+    background: var(--primary-background-color); color: var(--primary-text-color);
+  }
+  header {
+    position: sticky; top: 0; z-index: 2; background: var(--app-header-background-color);
+    color: var(--app-header-text-color); border-bottom: 1px solid var(--divider-color);
+  }
+  .bar { display: flex; align-items: center; height: 56px; padding: 0 16px; gap: 12px; }
+  .bar h1 { font-size: 20px; font-weight: 400; margin: 0; flex: 1; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--error-color); display: inline-block; }
+  .dot.on { background: var(--success-color); }
+  nav { display: flex; padding: 0 8px; overflow-x: auto; }
+  nav button {
+    background: none; border: 0; color: inherit; opacity: .7; font: inherit; font-weight: 500; text-transform: uppercase;
+    letter-spacing: .05em; padding: 12px 16px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  nav button.active { opacity: 1; color: var(--primary-color); border-bottom-color: var(--primary-color); }
+  main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card-background-color); border-radius: var(--ha-card-border-radius);
+    border: 1px solid var(--divider-color); overflow: hidden;
+  }
+  .card .head { padding: 16px 16px 0; display: flex; align-items: baseline; gap: 8px; }
+  .card .head h2 { font-size: 18px; font-weight: 400; margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .body { padding: 12px 16px 16px; }
+  .muted { color: var(--secondary-text-color); }
+  .small { font-size: 12px; }
+  .preview {
+    display: flex; align-items: center; justify-content: center; background: var(--secondary-background-color);
+    margin: 12px 16px 0; border-radius: 8px; min-height: 80px; overflow: hidden;
+  }
+  .preview img { max-width: 100%; display: block; image-rendering: pixelated; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px 12px; margin-top: 8px; }
+  .stats div span { display: block; }
+  .stats .k { font-size: 12px; color: var(--secondary-text-color); }
+  .actions { border-top: 1px solid var(--divider-color); display: flex; flex-wrap: wrap; padding: 4px 8px; gap: 4px; }
+  button.flat {
+    background: none; border: 0; color: var(--primary-color); font: inherit; font-weight: 500; padding: 8px 10px;
+    border-radius: 4px; cursor: pointer; text-transform: uppercase; font-size: 13px; letter-spacing: .03em;
+  }
+  button.flat:hover { background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+  button.flat.danger { color: var(--error-color); }
+  button.raised {
+    background: var(--primary-color); color: var(--text-on-primary); border: 0; border-radius: 4px; padding: 10px 18px;
+    font: inherit; font-weight: 500; text-transform: uppercase; cursor: pointer;
+  }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--secondary-background-color); }
+  .badge.warn { background: var(--warning-color); color: #000; }
+  .badge.err { background: var(--error-color); color: #fff; }
+  .badge.ok { background: var(--success-color); color: #fff; }
+  .progress { height: 4px; background: var(--secondary-background-color); }
+  .progress div { height: 100%; background: var(--primary-color); transition: width .3s; }
+  .form { display: grid; gap: 16px; max-width: 560px; }
+  label { display: grid; gap: 4px; }
+  label span { font-size: 12px; color: var(--secondary-text-color); }
+  input, select {
+    font: inherit; color: inherit; background: var(--secondary-background-color); border: 0;
+    border-bottom: 1px solid var(--secondary-text-color); padding: 10px 12px; border-radius: 4px 4px 0 0;
+  }
+  input:focus, select:focus { outline: none; border-bottom: 2px solid var(--primary-color); }
+  #log { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; padding: 16px; max-height: 70vh; overflow: auto; }
+  #log .err { color: var(--error-color); }
+  .empty { padding: 32px; text-align: center; color: var(--secondary-text-color); }
+  .toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff;
+    padding: 12px 20px; border-radius: 4px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 5;
+  }
+  .toast.show { opacity: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 0; vertical-align: top; }
+  td:first-child { color: var(--secondary-text-color); width: 45%; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>OEPL Multihub</h1>
+    <span class="small muted" id="summary"></span>
+    <span class="dot" id="conn" title="Connection to the addon"></span>
+  </div>
+  <nav id="tabs">
+    <button data-tab="tags" class="active">Tags</button>
+    <button data-tab="hubs">Hubs</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="log">Log</button>
+  </nav>
+</header>
+<main>
+  <section id="tab-tags"><div class="grid" id="tags"></div></section>
+  <section id="tab-hubs" hidden><div class="grid" id="hubs"></div></section>
+  <section id="tab-settings" hidden>
+    <div class="card"><div class="body">
+      <form class="form" id="apform">
+        <label><span>Name of this access point</span><input name="alias"></label>
+        <label><span>Maximum sleep between check-ins when nothing is pending (minutes)</span>
+          <input name="maxsleep" type="number" min="0" max="255"></label>
+        <label><span>Stop sleeping when nothing is pending</span>
+          <select name="stopsleep"><option value="0">Off</option><option value="1">On</option></select></label>
+        <label><span>Keep a preview of the current image</span>
+          <select name="preview"><option value="0">Off</option><option value="1">On</option></select></label>
+        <label><span>Tag lock (stops tags from joining other access points)</span>
+          <select name="lock"><option value="0">Off</option><option value="1">Lock new tags</option>
+            <option value="2">Lock all tags</option></select></label>
+        <label><span>Hub LED brightness</span>
+          <select name="led"><option value="0">Off</option><option value="31">Low</option>
+            <option value="63">Medium</option><option value="127">High</option><option value="255">Full</option></select></label>
+        <div><button class="raised" type="submit">Save</button></div>
+      </form>
+      <p class="small muted">The hub list is set in the addon's Configuration tab in Home Assistant.</p>
+    </div></div>
+  </section>
+  <section id="tab-log" hidden><div class="card"><div id="log"></div></div></section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const BASE = location.pathname.replace(/[^/]*$/, "");
+const url = (p) => BASE + p;
+const $ = (s) => document.querySelector(s);
+const tags = new Map();
+const progress = new Map();
+let hubs = [];
+
+// --- theme: copy Home Assistant's CSS variables from the parent page when we are in its ingress iframe ---
+const THEME_VARS = ["--primary-color", "--primary-background-color", "--secondary-background-color",
+  "--card-background-color", "--primary-text-color", "--secondary-text-color", "--divider-color", "--error-color",
+  "--warning-color", "--success-color", "--app-header-background-color", "--app-header-text-color",
+  "--ha-card-border-radius", "--text-primary-color", "--ha-card-background", "--paper-font-body1_-_font-family"];
+function applyTheme() {
+  let pdoc;
+  try { pdoc = window.parent !== window && window.parent.document; } catch (e) { return; }
+  if (!pdoc) return;
+  const cs = getComputedStyle(pdoc.documentElement);
+  const root = document.documentElement;
+  let any = false;
+  for (const v of THEME_VARS) {
+    const val = cs.getPropertyValue(v).trim();
+    if (!val) continue;
+    any = true;
+    if (v === "--ha-card-background") root.style.setProperty("--card-background-color", val);
+    else if (v === "--text-primary-color") root.style.setProperty("--text-on-primary", val);
+    else if (v.startsWith("--paper-font")) document.body.style.fontFamily = val;
+    else root.style.setProperty(v, val);
+  }
+  if (any) {
+    root.classList.add("themed");
+    const bg = cs.getPropertyValue("--primary-background-color").trim();
+    root.style.colorScheme = isDark(bg) ? "dark" : "light";
+  }
+}
+function isDark(color) {
+  const c = document.createElement("canvas").getContext("2d");
+  c.fillStyle = color || "#fff";
+  const m = c.fillStyle.match(/^#(..)(..)(..)/);
+  if (!m) return false;
+  const [r, g, b] = m.slice(1).map((h) => parseInt(h, 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b < 128;
+}
+applyTheme();
+try {
+  if (window.parent !== window) {
+    new MutationObserver(applyTheme).observe(window.parent.document.documentElement,
+      { attributes: true, attributeFilter: ["style", "class"] });
+    window.parent.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  }
+} catch (e) { /* not same-origin: keep our own light/dark */ }
+
+// --- tabs ---
+$("#tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  for (const x of document.querySelectorAll("#tabs button")) x.classList.toggle("active", x === b);
+  for (const s of document.querySelectorAll("main > section")) s.hidden = s.id !== "tab-" + b.dataset.tab;
+  if (b.dataset.tab === "settings") loadSettings();
+  if (b.dataset.tab === "hubs") loadHubs();
+});
+
+function toast(text) {
+  const t = $("#toast");
+  t.textContent = text;
+  t.classList.add("show");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+// --- formatting ---
+const NEVER = 3216153600;
+function ago(ts) {
+  if (!ts) return "never";
+  const s = Math.round(Date.now() / 1000 - ts);
+  if (s < 0) return "in " + dur(-s);
+  return dur(s) + " ago";
+}
+function dur(s) {
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.round(s / 60) + " min";
+  if (s < 86400) return Math.round(s / 3600) + " h";
+  return Math.round(s / 86400) + " d";
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function checkin(t) {
+  if (!t.nextcheckin || t.nextcheckin === NEVER) return "—";
+  return ago(t.nextcheckin);
+}
+function overdue(t) {
+  return t.nextcheckin && t.nextcheckin !== NEVER && Date.now() / 1000 > t.nextcheckin + 600;
+}
+
+// --- tags ---
+function tagCard(t) {
+  const name = t.alias || t.mac;
+  const bat = t.batteryMv ? (t.batteryMv / 1000).toFixed(2) + " V" : "—";
+  const badges = [];
+  if (t.pending) badges.push(`<span class="badge warn">${t.pending} pending</span>`);
+  if (overdue(t)) badges.push(`<span class="badge err">overdue</span>`);
+  if (t.batteryMv && t.batteryMv < 2600) badges.push(`<span class="badge err">low battery</span>`);
+  const p = progress.get(t.mac);
+  const img = t.imgtype && t.hash && !/^0+$/.test(t.hash)
+    ? `<img alt="" src="${url("api/preview/" + t.mac)}?h=${t.hash}" onerror="this.parentNode.innerHTML='<span class=muted>No preview</span>'">`
+    : `<span class="muted">No image yet</span>`;
+  return `<div class="card" data-mac="${t.mac}">
+    ${p ? `<div class="progress"><div style="width:${Math.round(100 * p.current / p.total)}%"></div></div>` : ""}
+    <div class="head"><h2 title="${esc(name)}">${esc(name)}</h2>${badges.join(" ")}</div>
+    <div class="preview">${img}</div>
+    <div class="body">
+      <div class="small muted">${t.mac} · type 0x${t.hwType.toString(16).padStart(2, "0").toUpperCase()}</div>
+      <div class="stats">
+        <div><span class="k">Hub</span><span>${esc(t.hub || "—")}</span></div>
+        <div><span class="k">Last seen</span><span>${ago(t.lastseen)}</span></div>
+        <div><span class="k">Next check-in</span><span>${checkin(t)}</span></div>
+        <div><span class="k">Battery</span><span>${bat}</span></div>
+        <div><span class="k">Signal</span><span>${t.RSSI} dBm · LQI ${t.LQI}</span></div>
+        <div><span class="k">Temperature</span><span>${t.temperature} °C</span></div>
+        <div><span class="k">Updates</span><span>${t.updatecount}</span></div>
+        <div><span class="k">Channel</span><span>${t.ch || "—"}</span></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="flat" data-act="rename">Rename</button>
+      <button class="flat" data-act="refresh">Refresh</button>
+      <button class="flat" data-act="ledflash">Flash LED</button>
+      ${t.pending ? `<button class="flat" data-act="clear">Clear pending</button>` : ""}
+      <button class="flat" data-act="reboot">Reboot</button>
+      <button class="flat" data-act="scan">Scan</button>
+      <button class="flat danger" data-act="del">Delete</button>
+    </div>
+  </div>`;
+}
+
+function renderTags() {
+  const list = [...tags.values()].sort((a, b) => (a.alias || a.mac).localeCompare(b.alias || b.mac));
+  $("#tags").innerHTML = list.length ? list.map(tagCard).join("")
+    : `<div class="empty">No tags yet. They appear here when they check in with a hub.</div>`;
+  updateSummary();
+}
+
+function updateTag(t) {
+  tags.set(t.mac, t);
+  const old = document.querySelector(`.card[data-mac="${t.mac}"]`);
+  if (!old) return renderTags();
+  const tmp = document.createElement("div");
+  tmp.innerHTML = tagCard(t);
+  const neu = tmp.firstElementChild;
+  // keep the old image element when the hash is the same, so it doesn't flicker
+  const oi = old.querySelector(".preview img"), ni = neu.querySelector(".preview img");
+  if (oi && ni && oi.getAttribute("src") === ni.getAttribute("src")) ni.replaceWith(oi);
+  old.replaceWith(neu);
+  updateSummary();
+}
+
+$("#tags").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  const mac = b.closest(".card").dataset.mac;
+  const t = tags.get(mac);
+  const act = b.dataset.act;
+  if (act === "rename") {
+    const alias = prompt("Name for " + mac, t.alias || "");
+    if (alias === null) return;
+    return post("save_cfg", { mac, alias });
+  }
+  if (act === "del" && !confirm(`Delete ${t.alias || mac} from the database? It comes back when it checks in again.`)) return;
+  if ((act === "reboot" || act === "scan") && !confirm(`Send "${act}" to ${t.alias || mac}?`)) return;
+  const r = await post("tag_cmd", { mac, cmd: act });
+  if (r && act === "del") { tags.delete(mac); renderTags(); }
+});
+
+async function post(path, fields) {
+  try {
+    const r = await fetch(url(path), { method: "POST", body: new URLSearchParams(fields) });
+    const text = await r.text();
+    toast(text || (r.ok ? "Done" : "Failed"));
+    return r.ok && !/^error/i.test(text);
+  } catch (e) {
+    toast("Failed: " + e.message);
+    return false;
+  }
+}
+
+async function loadTags() {
+  const all = new Map();
+  let pos = 0;
+  for (let i = 0; i < 200; i++) {
+    const r = await (await fetch(url("get_db?pos=" + pos))).json();
+    for (const t of r.tags || []) all.set(t.mac, t);
+    if (!r.continu) break;
+    pos = r.continu;
+  }
+  tags.clear();
+  for (const [k, v] of all) tags.set(k, v);
+  renderTags();
+}
+
+// --- hubs ---
+function hubCard(h) {
+  const s = h.status || {};
+  const rows = [
+    ["Address", esc(h.spec)],
+    ["Channel", h.channel || "—"],
+    ["Tags on this hub", h.tags ?? 0],
+    ["Radio MAC", h.mac || "—"],
+    ["Firmware", h.fw != null ? "0x" + h.fw.toString(16) : "—"],
+    ["Uptime", s.uptimeMs != null ? dur(Math.round(s.uptimeMs / 1000)) : "—"],
+    ["TX power", s.txPowerDbm != null ? s.txPowerDbm + " dBm" : "—"],
+    ["Pending on the hub", s.pending ?? "—"],
+    ["Frames received / sent", s.rxFrames != null ? `${s.rxFrames} / ${s.txFrames}` : "—"],
+    ["Link retransmits / timeouts", h.stats ? `${h.stats.retransmits} / ${h.stats.timeouts}` : "—"],
+  ];
+  return `<div class="card">
+    <div class="head"><h2>${esc(h.name)}</h2>
+      <span class="badge ${h.up ? "ok" : "err"}">${h.up ? "online" : "offline"}</span></div>
+    <div class="body"><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table></div>
+  </div>`;
+}
+async function loadHubs() {
+  try {
+    hubs = await (await fetch(url("api/hubs"))).json();
+  } catch (e) { return; }
+  $("#hubs").innerHTML = hubs.length ? hubs.map(hubCard).join("")
+    : `<div class="empty">No hubs configured. Add them in the addon's Configuration tab in Home Assistant.</div>`;
+  updateSummary();
+}
+
+function updateSummary() {
+  const up = hubs.filter((h) => h.up).length;
+  $("#summary").textContent = `${tags.size} tag${tags.size === 1 ? "" : "s"} · ${up}/${hubs.length} hub${hubs.length === 1 ? "" : "s"} online`;
+}
+
+// --- settings ---
+async function loadSettings() {
+  const c = await (await fetch(url("get_ap_config"))).json();
+  for (const el of $("#apform").elements) {
+    if (!el.name || c[el.name] === undefined) continue;
+    let v = String(c[el.name]);
+    if (el.tagName === "SELECT" && ![...el.options].some((o) => o.value === v)) {
+      el.add(new Option(v, v));
+    }
+    el.value = v;
+  }
+}
+$("#apform").addEventListener("submit", (e) => {
+  e.preventDefault();
+  post("save_apcfg", Object.fromEntries(new FormData(e.target)));
+});
+
+// --- log ---
+function log(text, err) {
+  const el = $("#log");
+  const line = document.createElement("div");
+  if (err) line.className = "err";
+  line.textContent = new Date().toLocaleTimeString() + "  " + text;
+  const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+  el.append(line);
+  while (el.childElementCount > 500) el.firstElementChild.remove();
+  if (atEnd) el.scrollTop = el.scrollHeight;
+}
+
+// --- websocket ---
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + url("ws"));
+  ws.onopen = () => { $("#conn").classList.add("on"); loadTags(); loadHubs(); };
+  ws.onclose = () => { $("#conn").classList.remove("on"); setTimeout(connect, 3000); };
+  ws.onmessage = (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch (err) { return; }
+    if (m.tags) for (const t of m.tags) { progress.delete(t.mac); updateTag(t); }
+    if (m.logMsg) log(m.logMsg);
+    if (m.errMsg) log(m.errMsg, true);
+    if (m.upload) {
+      progress.set(m.upload.src, m.upload);
+      const t = tags.get(m.upload.src);
+      if (t) updateTag(t);
+    }
+  };
+}
+connect();
+setInterval(loadHubs, 5000);
+setInterval(() => { if (!$("#tab-tags").hidden) renderTags(); }, 30000);
+</script>
+</body>
+</html>

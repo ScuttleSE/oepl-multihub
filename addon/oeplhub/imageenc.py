@@ -265,6 +265,53 @@ def encode_jpeg(jpeg: bytes, tagtype: TagType, **kw):
     return encode(Image.open(io.BytesIO(jpeg)), tagtype, **kw)
 
 
+def decode(data_type: int, data: bytes, tagtype: TagType, rotate=0):
+    """A file as encode() makes it, back to an RGB PIL image the size of the source. None if not decodable."""
+    from PIL import Image
+    if tagtype.rotatebuffer % 2:
+        p = ((rotate + 3) % 4 + (tagtype.rotatebuffer - 1)) % 4
+    else:
+        p = (rotate + tagtype.rotatebuffer) % 4
+    bufw, bufh = (tagtype.height, tagtype.width) if p % 2 else (tagtype.width, tagtype.height)
+    n = bufw * bufh
+    plane = (n + 7) // 8
+    if data_type == DATATYPE_IMG_ZLIB:
+        raw = zlib.decompress(data[4:])
+        bpp = raw[5]
+        body = raw[raw[0]:]
+        planes = [body[:plane], body[plane:2 * plane] if bpp == 2 else b""]
+    elif data_type in (DATATYPE_IMG_RAW_1BPP, DATATYPE_IMG_RAW_2BPP):
+        planes = [data[:plane], data[plane:2 * plane] if data_type == DATATYPE_IMG_RAW_2BPP else b""]
+    elif data_type in (DATATYPE_IMG_RAW_3BPP, DATATYPE_IMG_RAW_4BPP):
+        planes = None
+        bits = 3 if data_type == DATATYPE_IMG_RAW_3BPP else 4
+    else:
+        return None
+    if planes is not None:
+        b0 = Image.frombytes("1", (bufw, bufh), planes[0].ljust(plane, b"\x00")).convert("L")
+        idx = b0.point(lambda v: 1 if v else 0)
+        if planes[1]:
+            b1 = Image.frombytes("1", (bufw, bufh), planes[1].ljust(plane, b"\x00")).convert("L")
+            idx = Image.frombytes("L", (bufw, bufh),
+                                  bytes(a | (2 if b else 0) for a, b in zip(idx.tobytes(), b1.tobytes())))
+    else:
+        out = bytearray(n)
+        pos = 0
+        for i in range(n):
+            v = 0
+            for _ in range(bits):
+                v = (v << 1) | ((data[pos >> 3] >> (7 - (pos & 7))) & 1) if (pos >> 3) < len(data) else v << 1
+                pos += 1
+            out[i] = v
+        idx = Image.frombytes("L", (bufw, bufh), bytes(out))
+    im = Image.frombytes("P", (bufw, bufh), idx.tobytes())
+    pal = [c for rgb in tagtype.colortable for c in rgb]
+    im.putpalette(pal + [0] * (768 - len(pal)))
+    im = im.convert("RGB")
+    undo = {1: Image.Transpose.ROTATE_90, 2: Image.Transpose.ROTATE_180, 3: Image.Transpose.ROTATE_270}
+    return im.transpose(undo[p]) if p else im
+
+
 def data_ver(file_bytes: bytes) -> int:
     return struct.unpack("<Q", hashlib.md5(file_bytes).digest()[:8])[0]
 

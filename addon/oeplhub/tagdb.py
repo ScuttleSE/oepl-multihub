@@ -49,13 +49,11 @@ class Tag:
             "capabilities": self.capabilities, "modecfgjson": self.modecfgjson, "isexternal": False,
             "apip": "0.0.0.0", "rotate": self.rotate, "lut": self.lut, "invert": self.invert,
             "updatecount": self.updatecount, "updatelast": self.updatelast, "ch": self.ch, "ver": self.ver,
-            "imgtype": self.imgtype,
+            "imgtype": self.imgtype, "hub": self.hub,
         }
 
     def to_store(self) -> dict:
-        d = self.to_json()
-        d["hub"] = self.hub
-        return d
+        return self.to_json()
 
     @classmethod
     def from_store(cls, d: dict) -> "Tag":

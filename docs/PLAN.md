@@ -312,6 +312,15 @@ OEPL channel plan:
      - the stock UI's sections (tags, AP/hub settings, logs, …) become HA-style tabs at the top of the panel
      - follows the HA theme (light/dark, colours) where the ingress iframe allows it
      - shows the hubs too: link state, channel, stats
+     - **First version written** (16 Nov, addon 0.2.0), checked locally in headless Chromium (light and dark), not
+       yet seen inside HA. `addon/www/index.html`, plain HTML/JS, no build step, relative URLs (ingress). Tabs: Tags
+       (cards with preview, hub, last seen, next check-in, battery, signal, transfer progress; rename, refresh, LED,
+       clear, reboot, scan, delete), Hubs (`/api/hubs`, every 5 s), Settings (part of `save_apcfg`), Log
+       (websocket). Theme: copies HA's CSS variables from the parent page (same origin in ingress), else
+       `prefers-color-scheme`. Previews: `/api/preview/<MAC>` renders `current/<MAC>.raw` to PNG with
+       `imageenc.decode()` (round trip tested for all buffer rotations). Tag records now carry `hub` in
+       `to_json()` too (extra key for the stock API).
+     - The hub installer stays in `web/` (GitHub Pages); it was briefly moved into `addon/` by mistake.
    - **HA addon packaging done** (16 Nov). The repo is an addon repository (`repository.yaml`; HACS can't install
      addons). The addon lives in `addon/` (code moved there, since HA builds from the addon folder): `config.yaml`
      (slug `oepl_multihub`, options `hubs: [{spec, channel}]` and `verbose`, ingress on 8080, port 80 on the host for

@@ -29,7 +29,7 @@ worked with the real Home Assistant integration. Testing on real boards and tags
 | Browser installer | Online; not yet tested on a board |
 | Addon core and API | Works with the HA integration and simulated hubs |
 | Home Assistant addon packaging | Installs and starts on HA |
-| Addon web UI | Not started |
+| Addon web UI | First version |
 
 ## Installing the addon
 

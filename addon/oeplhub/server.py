@@ -5,17 +5,21 @@ Run: python -m oeplhub.server --data DIR --hub HOST[:PORT]@CHANNEL [--hub ...] [
 
 import argparse
 import asyncio
+import io
 import json
 import logging
 import os
 
 from aiohttp import web, WSMsgType
 
+from . import imageenc
 from . import v2proto as v2
 from .core import Core
 from .tagtypes import TagTypes
 
 log = logging.getLogger("server")
+
+WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "www")
 
 
 class Server:
@@ -80,9 +84,7 @@ class Server:
     # --- routes ----------------------------------------------------------------------------------
 
     async def index(self, request):
-        return web.Response(text="<!doctype html><title>OEPL multihub</title><h1>OEPL multihub</h1>"
-                                 "<p>The web UI comes later. API: /get_db, /sysinfo, /ws.</p>",
-                            content_type="text/html")
+        return web.FileResponse(os.path.join(WWW, "index.html"), headers={"Cache-Control": "no-cache"})
 
     async def get_db(self, request):
         mac = request.query.get("mac")
@@ -190,6 +192,34 @@ class Server:
             raise web.HTTPNotFound()
         return web.json_response(self.tagtypes.raw[hw])
 
+    async def api_preview(self, request):
+        mac = self.mac_param(request.match_info["mac"])
+        t = self.core.db.get(mac) if mac else None
+        p = os.path.join(self.core.current_dir, f"{mac}.raw")
+        if t is None or not t.imgtype or not os.path.isfile(p):
+            raise web.HTTPNotFound()
+        png = await self.run(self._render_preview, t, p)
+        if png is None:
+            raise web.HTTPNotFound()
+        return web.Response(body=png, content_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    def _render_preview(self, t, path):
+        tt = self.tagtypes.get(t.hwType)
+        if tt is None:
+            return None
+        with open(path, "rb") as f:
+            data = f.read()
+        try:
+            im = imageenc.decode(t.imgtype, data, tt, rotate=t.rotate)
+        except Exception as e:  # a damaged or unknown file must not break the UI
+            log.warning("preview of %s: %s", t.mac, e)
+            return None
+        if im is None:
+            return None
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        return buf.getvalue()
+
     async def api_hubs(self, request):
         return web.json_response(self.core.hub_status())
 
@@ -210,6 +240,7 @@ class Server:
             web.get("/current/{name}", self.current),
             web.get("/tagtypes/{name}", self.tagtype),
             web.get("/api/hubs", self.api_hubs),
+            web.get("/api/preview/{mac}", self.api_preview),
         ])
 
         async def on_startup(app):
