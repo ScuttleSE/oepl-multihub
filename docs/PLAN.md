@@ -186,6 +186,9 @@ OEPL channel plan:
 - **Ready-made two-chip option:** an OEPL-style ESP32-S3 + ESP32-C6 AP board (Mini AP v3/v4 and similar). The S3 does
   Wi-Fi with its own radio, the C6 listens full time. It needs a bridge firmware for the S3 (not built yet).
   RW612 and IW612 were looked at and rejected: shared 2.4 GHz path, and porting or closed firmware.
+  Off-the-shelf version: **Espressif ESP Thread Border Router / Zigbee Gateway board** (ESP32-S3 + ESP32-H2, UART,
+  H2 reset/boot wired to the S3, PTA coex wires, optional Ethernet daughter board, about €15). Upstream has an H2
+  radio build (`upstream/ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP`).
 - **Simplest test setup:** one C6 on USB to the dev PC or the HA box, stock firmware, host link over USB serial.
 
 ## Tags
