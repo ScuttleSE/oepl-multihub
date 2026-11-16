@@ -6,3 +6,4 @@
 - Tags must stay on stock OEPL firmware. Don't propose tag firmware changes.
 - Home Assistant: read-only unless the user agrees to a change. Never print or commit secrets.
 - The user prefers short answers and one step at a time.
+- Commit and push after every change.
