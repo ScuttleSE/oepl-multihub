@@ -469,6 +469,14 @@ Notes:
   - Step 2 (blocked): the screen as a tag in HA, as the stock AP does with its own TFT. It needs a new host-link
     message to send an image to the hub. HA only knows tag types from upstream, and none is 240×240, so it needs an
     upstream tag type first (like PR #638 for 0x94).
+- **Hub with an external antenna:** Seeed XIAO ESP32-C6 style boards (the Amazon listing is a look-alike, "Model:
+  ESP32-C6", R 202-JCE066). They have an onboard antenna and a U.FL connector, selected by an RF switch. Discussed
+  16 Nov: first test the Minis' range; buy these (preferably genuine Seeed, plus 2.4 GHz U.FL antennas) if range is
+  short.
+  - Firmware: a board option that drives the RF switch (on the XIAO, GPIO3 low = switch on, GPIO14 high = external
+    antenna) and skips the CC1101 probe on GPIO 0–7, since GPIO3 is in that range. Check a clone's wiring against
+    Seeed's schematic. XIAO user LED: GPIO15.
+  - Possibly an addon hub option `antenna: internal|external`, sent with `SET_CONFIG`.
 
 ## Open questions
 
