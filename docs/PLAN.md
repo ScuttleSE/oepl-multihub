@@ -367,8 +367,11 @@ OEPL channel plan:
        the S3`. Push: 36 → 14 → 2 parts, complete.
      - The host's ACK timeout now defaults per transport: 30 ms for USB/UART, 1000 ms for TCP (`Transport.ack_timeout_ms`,
        local). `--ack-timeout` only overrides it. A Wi-Fi push without the flag completed.
-     - To do: the 50-push coexistence test (step 5).
-5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
+     - **50-push coexistence test passed** (17 Nov, 20:41–21:42): 50/50 `XFER_COMPLETE`, each on the first offer, 0 link
+       errors or reconnects. Times 39–76 s (median 72 s, about one tag check-in interval). Every image: block 0 had
+       34–38 → 13–16 → 1–3 parts, the same pattern as over USB. The firmware log was lost after the first reset, so
+       no firmware-side counts.
+5. [x] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
    other hub, and gets its pending image.
