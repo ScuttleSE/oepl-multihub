@@ -357,7 +357,15 @@ OEPL channel plan:
        two-chip fallback (S3+C6 board) if none works.
      - Host side: Wi-Fi hubs need a larger ACK timeout (about 1 s). The radio's own event-ACK wait (30 ms, 3 tries)
        is also too short over Wi-Fi, so make it larger in the Wi-Fi build.
-     - Not committed: `WIFI_PS_NONE`, and turning off the coex override (debugging only).
+     - **Burst boost works** (fork `82dfc1f`, local only, not pushed yet): IDF default priorities normally, and
+       idle LOW / txrx HIGH / txrx_at HIGH from burst start until 100 ms after it (`radioCoexBoost()`). Each boost
+       lasted 120–330 ms. Image over Wi-Fi: 36 → 15 → 2 parts, `XFER_COMPLETE`. Wi-Fi stayed up, with no beacon
+       timeout. Also `WIFI_PS_NONE`.
+     - Host (`dcbb3ae`, local only): the startup waits (`HELLO` probe, `RDY?`/`NFO?`/`FRM1`) scale with
+       `--ack-timeout`. Fixed a TCP read/close race (`'NoneType' has no attribute 'recv'`).
+     - To do: a larger radio-side event-ACK wait in the Wi-Fi build (now 30 ms: `no answer from the S3 to event`,
+       then a retransmit). A default ACK timeout for TCP hubs in the host, so `--ack-timeout 1000` isn't needed.
+       Then the 50-push coexistence test (step 5).
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
