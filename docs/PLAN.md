@@ -243,6 +243,8 @@ OEPL channel plan:
    (Only the flashing is left.)
    - Chose (a). ESP-IDF v5.5.5 is in `toolchain/` (`IDF_TOOLS_PATH=toolchain/.espressif`, Python 3.14).
      The fork is cloned at `upstream/` (git-ignored). The stock C6 build works. Flashing waits for the boards (~19 Nov).
+     Boards arrived 17 Nov. First board on `/dev/ttyACM0`: ESP32-C6FH4 rev v0.2, 4 MB, MAC `98:88:e0:70:e7:f4`.
+     Some USB-C cables carry only power, so the board does not enumerate.
    - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
      stock) / `OEPL_HOST_LINK_USB` (native USB Serial/JTAG, new `main/host_usb.c`). Uses `uartWaitTxDone()` instead of
      the direct `uart_wait_tx_done` call. In the USB build the debug console is on UART0 only. Build in
