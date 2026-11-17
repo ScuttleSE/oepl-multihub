@@ -108,18 +108,24 @@ class TcpTransport(Transport):
                 self.sock = None
 
     def write(self, data: bytes):
+        sock = self.sock
+        if sock is None:
+            raise ConnectionError("not connected")
         try:
-            self.sock.sendall(data)
+            sock.sendall(data)
         except OSError as e:
             raise ConnectionError(str(e)) from e
 
     def read(self, timeout: float) -> bytes:
-        r, _, _ = select.select([self.sock], [], [], timeout)
-        if not r:
-            return b""
+        sock = self.sock  # close() from another thread sets self.sock to None
+        if sock is None:
+            raise ConnectionError("not connected")
         try:
-            data = self.sock.recv(4096)
-        except OSError as e:
+            r, _, _ = select.select([sock], [], [], timeout)
+            if not r:
+                return b""
+            data = sock.recv(4096)
+        except (OSError, ValueError) as e:
             raise ConnectionError(str(e)) from e
         if not data:
             raise ConnectionError("connection closed by the hub")

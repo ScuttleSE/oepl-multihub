@@ -95,13 +95,13 @@ class HubLink:
         self.t.read(0.05)
         for _ in range(3):
             self.t.write(b"RDY?")
-            _, m = self._read_until(rb"ACK>", 0.5)
+            _, m = self._read_until(rb"ACK>", max(0.5, 2 * self.ack_timeout))
             if m:
                 break
         else:
             raise LinkError("no answer to RDY?")
         self.t.write(b"NFO?")
-        buf, m = self._read_until(rb"CAP>([0-9A-Fa-f]{4})", 1.0)
+        buf, m = self._read_until(rb"CAP>([0-9A-Fa-f]{4})", max(1.0, 2 * self.ack_timeout))
         if not m:
             raise LinkError("no CAP> in the NFO? answer: radio without protocol v2")
         text = buf.decode("ascii", "replace")
@@ -109,7 +109,7 @@ class HubLink:
         self.info = info
         self.log.debug("NFO: %s", info)
         self.t.write(b"FRM1")
-        _, m = self._read_until(rb"ACK>", 0.5)
+        _, m = self._read_until(rb"ACK>", max(0.5, 2 * self.ack_timeout))
         if not m:
             raise LinkError("no ACK> to FRM1")
         time.sleep((v2.SWITCH_DELAY_MS + 10) / 1000)
@@ -122,7 +122,8 @@ class HubLink:
         for _ in range(attempts):
             try:
                 # A radio still in ASCII mode doesn't answer: expected, not a link timeout
-                f = self._request(v2.HELLO, payload, retries=0, timeout=0.2, count_timeout=False)
+                f = self._request(v2.HELLO, payload, retries=0, timeout=max(0.2, self.ack_timeout),
+                                  count_timeout=False)
             except LinkError:
                 continue
             if f.type != v2.HELLO_REPLY or len(f.payload) < v2.HelloReply.size:
