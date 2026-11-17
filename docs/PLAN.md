@@ -365,8 +365,9 @@ OEPL channel plan:
        `--ack-timeout`. Fixed a TCP read/close race (`'NoneType' has no attribute 'recv'`).
      - Radio-side event-ACK wait is 1 s in the Wi-Fi build (`v2link.c`, local). After that, no more `no answer from
        the S3`. Push: 36 → 14 → 2 parts, complete.
-     - To do: a default ACK timeout for TCP hubs in the host, so `--ack-timeout 1000` isn't needed.
-       Then the 50-push coexistence test (step 5).
+     - The host's ACK timeout now defaults per transport: 30 ms for USB/UART, 1000 ms for TCP (`Transport.ack_timeout_ms`,
+       local). `--ack-timeout` only overrides it. A Wi-Fi push without the flag completed.
+     - To do: the 50-push coexistence test (step 5).
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
