@@ -160,7 +160,7 @@ def cmd_fakehub(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-v", "--verbose", action="store_true")
-    p.add_argument("--ack-timeout", type=int, default=v2.ACK_TIMEOUT_MS, help="ms (default %(default)s)")
+    p.add_argument("--ack-timeout", type=int, help="ms (default: 30 for USB/UART hubs, 1000 for Wi-Fi hubs)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     m = sub.add_parser("monitor")

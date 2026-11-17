@@ -76,7 +76,7 @@ def now() -> int:
 
 
 class Core:
-    def __init__(self, data_dir, hubs, tagtypes, notify=lambda msg: None, ack_timeout_ms=v2.ACK_TIMEOUT_MS):
+    def __init__(self, data_dir, hubs, tagtypes, notify=lambda msg: None, ack_timeout_ms=None):
         self.data_dir = data_dir
         self.current_dir = os.path.join(data_dir, "current")
         os.makedirs(self.current_dir, exist_ok=True)

@@ -446,7 +446,7 @@ def main():
     p.add_argument("--tagtypes", action="append", default=[], help="extra directory with tagtype JSONs")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8080)
-    p.add_argument("--ack-timeout", type=int, default=v2.ACK_TIMEOUT_MS, help="ms")
+    p.add_argument("--ack-timeout", type=int, help="ms (default: 30 for USB/UART hubs, 1000 for Wi-Fi hubs)")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,

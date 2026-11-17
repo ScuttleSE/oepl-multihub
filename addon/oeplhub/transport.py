@@ -11,6 +11,7 @@ import termios
 class Transport:
     name = "?"
     has_baud = False  # only a real UART needs the 2 Mbaud switch after FRM1
+    ack_timeout_ms = 30  # a cable answers in a few ms
 
     def open(self): ...
     def close(self): ...
@@ -89,6 +90,7 @@ class SerialTransport(Transport):
 
 
 class TcpTransport(Transport):
+    ack_timeout_ms = 1000  # Wi-Fi: answers take up to several hundred ms
     def __init__(self, host: str, port: int = 6639):
         self.host, self.port = host, port
         self.name = f"{host}:{port}"

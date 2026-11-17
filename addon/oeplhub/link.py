@@ -25,12 +25,12 @@ class NakError(LinkError):
 
 
 class HubLink:
-    def __init__(self, name, transport, on_event=None, on_state=None, ack_timeout_ms=v2.ACK_TIMEOUT_MS):
+    def __init__(self, name, transport, on_event=None, on_state=None, ack_timeout_ms=None):
         self.name = name
         self.t = transport
         self.on_event = on_event or (lambda link, ftype, ev: None)
         self.on_state = on_state or (lambda link, up: None)
-        self.ack_timeout = ack_timeout_ms / 1000
+        self.ack_timeout = (ack_timeout_ms or transport.ack_timeout_ms) / 1000
         self.log = logging.getLogger(f"hub.{name}")
 
         self.up = False
