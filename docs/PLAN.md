@@ -331,6 +331,19 @@ OEPL channel plan:
        radio doesn't use it). Built with `-Os`: 0xDB290 bytes, 47% of a slot. With the stock 1 MB partition and
        `-Og` it was 95%.
      - Since the build uses `-Os` instead of stock `-Og`, check the radio timing (`lateMs` in `BLOCK_SERVED`).
+   - **First hardware test, 17 Nov.** The installer's Improv setup failed: the network list was empty, and connecting
+     timed out and dropped back to the dialog. Cause: `esp_coex_wifi_i154_enable()` was never called (log showed
+     `coexist: 0`). Once the 802.15.4 receiver started, Wi-Fi got no radio time: scans before `radio_init` found 8 APs,
+     scans after it found none, and auth timed out (reason 2/201). Fixed in fork `32073bc` (`radio.c`, Wi-Fi build
+     only). Also: Improv scan failed silently while the driver kept reconnecting (`ESP_ERR_WIFI_STATE`). Reconnecting
+     now pauses during a scan. New RPC `0xFE` returns the last disconnect reason and scan count.
+     After the fix, board 1 joined on Wi-Fi ch 6, −67 dBm, `192.168.50.133` (`oepl-hub-e7f4`). Improv state, info and
+     scan all work.
+     - Debug trick without a UART adapter: a throwaway build with the console on USB and Improv off
+       (`-D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-wifi;<file with CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y,
+       CONFIG_OEPL_IMPROV_SERIAL=n>"`, its own `-B` dir).
+     - Open: the dev PC (`192.168.0.3`) can't reach the hub on `192.168.50.x` (TCP 6639 times out, no ping). Probably
+       a firewall between the networks.
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
