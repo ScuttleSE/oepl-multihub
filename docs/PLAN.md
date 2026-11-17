@@ -342,8 +342,22 @@ OEPL channel plan:
      - Debug trick without a UART adapter: a throwaway build with the console on USB and Improv off
        (`-D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.host-wifi;<file with CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y,
        CONFIG_OEPL_IMPROV_SERIAL=n>"`, its own `-B` dir).
-     - Open: the dev PC (`192.168.0.3`) can't reach the hub on `192.168.50.x` (TCP 6639 times out, no ping). Probably
-       a firewall between the networks.
+     - The "unreachable" problem was not a firewall. The hub dropped off Wi-Fi.
+   - **Coexistence findings, 17 Nov** (board 1, AP on Wi-Fi ch 6, −67…−72 dBm; tags on 802.15.4 ch 11 = 2405 MHz):
+     - `WIFI_PS_MIN_MODEM`: the hub stops answering (no ARP, "no route to host") while it still reports itself
+       connected. With `WIFI_PS_NONE`, pings answer for minutes (on 802.15.4 ch 25, idle).
+     - Our raised coex priorities (idle LOW, txrx/txrx_at HIGH): fine on 802.15.4 ch 25. About 6 s after the
+       switch to ch 11: `bcn_timeout`, disconnect (200), then only 201 "no AP found". Never recovers.
+     - IDF default priorities (no `esp_ieee802154_set_coex_config`): Wi-Fi stays up on ch 11. Ping is 0% loss but
+       avg 213 ms, max 790 ms. The host link needs `--ack-timeout 1000` (the default 30 ms gives retransmits and
+       reconnects); then 0 retransmits and check-ins arrive. **But bursts barely reach the tag:** it re-requests
+       31–35 of 35 parts every round, and the image never completes.
+     - So the radio time-slicing is the problem, not the link protocol. Next ideas: HIGH only for TX (`txrx_at`)
+       or only during a burst, MIDDLE for txrx; Wi-Fi on a channel far from the 802.15.4 channel; then the
+       two-chip fallback (S3+C6 board) if none works.
+     - Host side: Wi-Fi hubs need a larger ACK timeout (about 1 s). The radio's own event-ACK wait (30 ms, 3 tries)
+       is also too short over Wi-Fi, so make it larger in the Wi-Fi build.
+     - Not committed: `WIFI_PS_NONE`, and turning off the coex override (debugging only).
 5. [ ] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
