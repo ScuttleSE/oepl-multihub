@@ -254,7 +254,8 @@ OEPL channel plan:
      also writes to USB Serial/JTAG (ROM channel 2, turned on by IDF startup), whatever the console setting is.
      `host_usb.c` and `improv.c` now call `esp_rom_install_channel_putc(2, NULL)`. After the fix: 0 bad frames in 10
      check-ins. Tags seen so far: `0000021ECCFF3B14`, `0000021A7E103B18`, `8C73DAFFFE5D531B`, `0000017C3F4F4119`.
-     Still open: one link timeout at startup on every run.
+     The single link timeout at startup was the `HELLO` probe that `connect()` sends first, which a radio in ASCII
+     mode doesn't answer. It no longer counts as a timeout.
    - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
      stock) / `OEPL_HOST_LINK_USB` (native USB Serial/JTAG, new `main/host_usb.c`). Uses `uartWaitTxDone()` instead of
      the direct `uart_wait_tx_done` call. In the USB build the debug console is on UART0 only. Build in

@@ -121,7 +121,8 @@ class HubLink:
                                 wantedCaps=v2.CAP_FRAMING | v2.CAP_TAG_RETURN_DATA | v2.CAP_ALLOW_LIST)
         for _ in range(attempts):
             try:
-                f = self._request(v2.HELLO, payload, retries=0, timeout=0.2)
+                # A radio still in ASCII mode doesn't answer: expected, not a link timeout
+                f = self._request(v2.HELLO, payload, retries=0, timeout=0.2, count_timeout=False)
             except LinkError:
                 continue
             if f.type != v2.HELLO_REPLY or len(f.payload) < v2.HelloReply.size:
@@ -249,7 +250,7 @@ class HubLink:
             raise LinkError(str(e)) from e
         return w
 
-    def _request(self, ftype, payload=b"", retries=v2.RETRIES, timeout=None):
+    def _request(self, ftype, payload=b"", retries=v2.RETRIES, timeout=None, count_timeout=True):
         """Stop-and-wait: the response frame (ACK, NAK, HELLO_REPLY or STATUS). LinkError on no answer."""
         timeout = timeout or self.ack_timeout
         seq = self._next_seq()
@@ -260,7 +261,8 @@ class HubLink:
                     return w[1]
                 if self._stop.is_set() and ftype != v2.HELLO:
                     break
-            self.stats["timeouts"] += 1
+            if count_timeout:
+                self.stats["timeouts"] += 1
             raise LinkError(f"no answer to {v2.type_name(ftype)}")
         finally:
             with self._waiting_lock:
