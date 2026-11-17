@@ -278,11 +278,12 @@ OEPL channel plan:
        Otherwise it does the ASCII startup.
      - Works against the simulated hub with 5% frame loss each way and 15 ms jitter, in both cache-preload and
        `DATA_NEEDED` modes.
-3. [ ] **Push one image** to tag 1: `SET_PENDING` with `DATA_FOLLOWS`, then `DATA_CHUNK`s, and wait for `XFER_COMPLETE`.
+3. [x] **Push one image** to tag 1: `SET_PENDING` with `DATA_FOLLOWS`, then `DATA_CHUNK`s, and wait for `XFER_COMPLETE`.
    - **First real push, 17 Nov:** tag `8C73DAFFFE5D531B` (0x94, fw 0x2B), channel 11, stock AP off. 792×272 BWRY
      test image → type 0x30, 4331 bytes. Preloaded to the cache in 26 ms. Offered on the next check-in;
      `XFER_COMPLETE` 1.5 s after the check-in. Block 0 needed re-requests (42 → 20 → 4 → 1 parts) at −64 dBm. Compare
-     with the stock AP. Display not yet confirmed.
+     with the stock AP. **The image shows on the tag.** The BWRY panel takes a while to refresh after `XFER_COMPLETE`,
+     so wait before deciding a push failed.
    Use `94.json` for the format. Check against `newproto.cpp` and `v2transport.cpp` (the dataType, the image header, and
    whether G5 or raw is used).
    - **Encoder written** (`oeplhub/imageenc.py`, a port of `colorquant.h` and `makeimage.cpp`; needs Pillow).
