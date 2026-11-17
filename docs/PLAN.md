@@ -247,6 +247,9 @@ OEPL channel plan:
      Some USB-C cables carry only power, so the board does not enumerate.
      Flashed the `build-usb` firmware (fork `44433a0`). `hubtool.py monitor /dev/ttyACM0 --channel 25` works: link up
      (fw 0024, caps 004B, 256 KB cache, 250 slots), heartbeats OK. One link timeout early on. No tags heard yet.
+     On channel 11 (stock AP `192.168.50.205` is on auto → 11) it hears real tags while the stock AP still runs:
+     `0000021ECCFF3B14` (−79…−85 dBm) and `0000021A7E103B18` (−91 dBm). `CHECKIN` events arrive, radio tx follows rx.
+     Open: the link counted 2 "bad frames" from the radio in ~70 s. Find out why before step 3.
    - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
      stock) / `OEPL_HOST_LINK_USB` (native USB Serial/JTAG, new `main/host_usb.c`). Uses `uartWaitTxDone()` instead of
      the direct `uart_wait_tx_done` call. In the USB build the debug console is on UART0 only. Build in
