@@ -250,6 +250,11 @@ OEPL channel plan:
      On channel 11 (stock AP `192.168.50.205` is on auto → 11) it hears real tags while the stock AP still runs:
      `0000021ECCFF3B14` (−79…−85 dBm) and `0000021A7E103B18` (−91 dBm). `CHECKIN` events arrive, radio tx follows rx.
      Open: the link counted 2 "bad frames" from the radio in ~70 s. Find out why before step 3.
+     **Fixed** (fork `5227813`): they were `E (…) RADIO: TX Err: 2` lines from `ESP_EARLY_LOGE` in `radio.c`. ROM printf
+     also writes to USB Serial/JTAG (ROM channel 2, turned on by IDF startup), whatever the console setting is.
+     `host_usb.c` and `improv.c` now call `esp_rom_install_channel_putc(2, NULL)`. After the fix: 0 bad frames in 10
+     check-ins. Tags seen so far: `0000021ECCFF3B14`, `0000021A7E103B18`, `8C73DAFFFE5D531B`, `0000017C3F4F4119`.
+     Still open: one link timeout at startup on every run.
    - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
      stock) / `OEPL_HOST_LINK_USB` (native USB Serial/JTAG, new `main/host_usb.c`). Uses `uartWaitTxDone()` instead of
      the direct `uart_wait_tx_done` call. In the USB build the debug console is on UART0 only. Build in
