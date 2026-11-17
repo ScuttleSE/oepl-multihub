@@ -285,6 +285,11 @@ OEPL channel plan:
      `XFER_COMPLETE` 1.5 s after the check-in. Block 0 needed re-requests (42 → 20 → 4 → 1 parts) at −64 dBm. Compare
      with the stock AP. **The image shows on the tag.** The BWRY panel takes a while to refresh after `XFER_COMPLETE`,
      so wait before deciding a push failed.
+   - **Re-request pattern** (17 Nov, 3 fresh images, −57…−59 dBm): block 0 is always 42 → 18 → 2 parts. Block 1 is
+     1–2 parts. The pattern repeats too exactly to be random RF loss. Probably the tag misses parts while it is
+     busy during the back-to-back burst. The burst code is unchanged from upstream, so the stock AP does the same.
+     It costs about 1 s per image. Not changed. If needed later: try a small gap between burst frames.
+   - Pushing the same image again: the tag already has that dataVer and answers `XFER_COMPLETE` without a download.
    Use `94.json` for the format. Check against `newproto.cpp` and `v2transport.cpp` (the dataType, the image header, and
    whether G5 or raw is used).
    - **Encoder written** (`oeplhub/imageenc.py`, a port of `colorquant.h` and `makeimage.cpp`; needs Pillow).
