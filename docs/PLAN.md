@@ -245,6 +245,8 @@ OEPL channel plan:
      The fork is cloned at `upstream/` (git-ignored). The stock C6 build works. Flashing waits for the boards (~19 Nov).
      Boards arrived 17 Nov. First board on `/dev/ttyACM0`: ESP32-C6FH4 rev v0.2, 4 MB, MAC `98:88:e0:70:e7:f4`.
      Some USB-C cables carry only power, so the board does not enumerate.
+     Flashed the `build-usb` firmware (fork `44433a0`). `hubtool.py monitor /dev/ttyACM0 --channel 25` works: link up
+     (fw 0024, caps 004B, 256 KB cache, 250 slots), heartbeats OK. One link timeout early on. No tags heard yet.
    - Fork branch **`host-link`** (`ScuttleSE/OpenEPaperLink`): Kconfig choice `OEPL_HOST_LINK_UART` (default, as
      stock) / `OEPL_HOST_LINK_USB` (native USB Serial/JTAG, new `main/host_usb.c`). Uses `uartWaitTxDone()` instead of
      the direct `uart_wait_tx_done` call. In the USB build the debug console is on UART0 only. Build in
