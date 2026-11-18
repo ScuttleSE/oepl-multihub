@@ -5,7 +5,17 @@ from PIL import Image, ImageDraw, ImageFont
 from .imageenc import TagType
 
 
-def _font(size):
+_FONT_DIRS = ("/usr/share/fonts/dejavu", "/usr/share/fonts/TTF", "/usr/share/fonts/truetype/dejavu")
+
+
+def _font(size, bold=False):
+    """DejaVu Sans (Alpine: font-dejavu) for å/ä/ö and dashes; Pillow's own font otherwise."""
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    for d in _FONT_DIRS:
+        try:
+            return ImageFont.truetype(f"{d}/{name}", max(8, int(size)))
+        except OSError:
+            continue
     try:
         return ImageFont.load_default(size=max(8, int(size)))
     except TypeError:  # Pillow < 10.1: one small bitmap font
@@ -16,10 +26,10 @@ def _lum(c):
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
 
 
-def _fit_font(draw, text, max_w, max_h):
+def _fit_font(draw, text, max_w, max_h, bold=False):
     size = max_h
     while size > 8:
-        f = _font(size)
+        f = _font(size, bold)
         l, t, r, b = draw.textbbox((0, 0), text, font=f)
         if r - l <= max_w and b - t <= max_h:
             return f

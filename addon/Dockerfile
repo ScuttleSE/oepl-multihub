@@ -4,7 +4,7 @@ FROM $BUILD_FROM
 ARG BUILD_VERSION=dev
 ENV OEPL_ADDON_VERSION=$BUILD_VERSION
 
-RUN apk add --no-cache python3 py3-pip py3-aiohttp py3-pillow
+RUN apk add --no-cache python3 py3-pip py3-aiohttp py3-pillow font-dejavu
 
 WORKDIR /app
 COPY oeplhub /app/oeplhub

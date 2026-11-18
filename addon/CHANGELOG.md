@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- **Electricity prices** as tag content: in a tag's Settings, set Content to "Electricity prices", enter your
+  Nordpool sensor (for example `sensor.nordpool_kwh_se4_sek_3_10_0`) and how often to redraw (default 15 min).
+  The tag shows the current price, a bar chart of the next 24 hours (expensive periods in red or yellow, today and
+  tomorrow once published) and the cheapest coming hour. An unchanged chart is not sent again.
+- The addon can now read entity states from Home Assistant (`homeassistant_api`). It only reads.
+- Text on generated images uses DejaVu Sans, so å, ä and ö work.
+
 ## 0.7.2
 
 - Click a tag's preview to see it at full size, pixel for pixel as on the tag.

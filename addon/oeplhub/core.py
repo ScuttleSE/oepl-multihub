@@ -20,6 +20,8 @@ from .link import HubLink, LinkError
 from .tagdb import NEVER, TagDB
 from .transport import open_transport
 
+CONTENT_PRICES = 27  # "Dayahead prices" in the stock AP; here from a Home Assistant Nordpool sensor
+
 log = logging.getLogger("core")
 
 DATATYPE_NOUPDATE = 0
@@ -150,6 +152,10 @@ class Core:
                 self._idle_requests()
             except Exception:
                 log.exception("idle requests")
+            try:
+                self._run_content()
+            except Exception:
+                log.exception("content")
             if self.db.dirty:
                 try:
                     self.db.save()
@@ -660,6 +666,63 @@ class Core:
                         f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending")
         return 200, "Ok, saved"
 
+    # --- content drawn by the addon: electricity prices (content mode 27) ------------------------
+
+    def _run_content(self):
+        due = getattr(self, "_content_due", None)
+        if due is None:
+            due = self._content_due = {}
+        mono = time.monotonic()
+        with self.lock:
+            todo = [t.mac for t in self.db.tags.values()
+                    if t.contentMode == CONTENT_PRICES and mono >= due.get(t.mac, 0)]
+        for mac in todo:
+            t = self.db.get(mac)
+            try:
+                cfg = json.loads(t.modecfgjson or "{}") or {}
+            except ValueError:
+                cfg = {}
+            if not isinstance(cfg, dict):
+                cfg = {}
+            interval = max(5, int(cfg.get("interval") or 15))
+            due[mac] = mono + interval * 60
+            self.draw_prices(mac, cfg.get("entity", ""), interval)
+
+    def content_changed(self, mac):
+        """Draw a tag's content at the next housekeeping pass (settings changed)."""
+        getattr(self, "_content_due", {}).pop(mac, None)
+
+    def draw_prices(self, mac, entity, interval=15):
+        from datetime import datetime
+        from . import haapi, pricechart
+        t = self.db.get(mac)
+        if t is None:
+            return
+        tt = self.tagtypes.get(t.hwType)
+        if tt is None:
+            self.ws_err(f"{mac}: no tag type for hwType {t.hwType:02X}")
+            return
+        if not entity:
+            self.ws_err(f"{mac}: electricity prices: no sensor set")
+            return
+        try:
+            attrs = haapi.get_state(entity).get("attributes", {})
+        except haapi.HAError as e:
+            self.ws_err(f"{mac}: electricity prices: {e}")
+            return
+        prices = pricechart.parse_prices(attrs)
+        if not prices:
+            self.ws_err(f"{mac}: electricity prices: {entity} has no raw_today prices")
+            return
+        img = pricechart.render(tt, prices, datetime.now().astimezone(), pricechart.currency_of(attrs), t.rotate,
+                                t.alias or "")
+        data_type, data = imageenc.encode(img, tt, dither=0, rotate=t.rotate, tag_fw=t.ver, invert=t.invert == 1)
+        with self.lock:
+            t.nextupdate = now() + interval * 60
+            self.db.dirty = True
+        self.queue_data(mac, data_type, data, imageenc.data_type_arg(lut=t.lut), self.max_sleep(interval),
+                        f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending")
+
     # --- variables for JSON templates (/set_var, /set_vars, checkVars) ---------------------------
 
     def set_vars(self, values: dict):
@@ -895,6 +958,7 @@ class Core:
                 if k in form:
                     setattr(t, k, int(form[k]))
             self.db.dirty = True
+        self.content_changed(mac)
         self.ws_tag(mac)
         return 200, "Ok, saved"
 

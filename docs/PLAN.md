@@ -482,6 +482,14 @@ OEPL channel plan:
        bar per `colortable` entry with its name, 1 px line patterns; canvas swapped for rotate 1/3; sent with
        dither 0 as PNG; 0.7.1 adds a line with the alias, or the MAC if there is none). Panel button and `POST /api/test_image mac=`. Skips an image whose dataVer is already
        queued for the tag. `/sysinfo` `buildversion` = `BUILD_VERSION`.
+     - **Addon 0.8.0** (18 Nov): content mode 27 "Electricity prices" from a Nordpool (HACS) sensor instead of
+       ENTSO-E. `modecfgjson` `{"entity", "interval"}`. `oeplhub/haapi.py` (Supervisor `/core/api/states`, or
+       `HA_URL`/`HA_TOKEN` for local runs), `oeplhub/pricechart.py` (`raw_today`/`raw_tomorrow`, `price_in_cents`; next
+       24 h from now, current price large, bars ≥ avg+35% of (max−avg) in the accent colour, midnight dotted, the
+       cheapest 60 min window in the footer; öre/øre/cent). `Core._run_content()` in housekeeping, redraws every
+       interval (≥ 5 min), `nextupdate` = next redraw, and the dataVer dedup skips unchanged charts. Panel: a
+       Content select in the tag dialog. Fonts: DejaVu Sans (`font-dejavu` in the image). Tested locally with a fake
+       HA API and a fakehub 0x12 tag. Not yet with the user's real sensor (`raw_today` format assumed).
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it

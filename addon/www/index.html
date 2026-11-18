@@ -236,6 +236,13 @@
       <label><span>Invert colours</span>
         <select name="invert"><option value="0">Off</option><option value="1">On</option></select></label>
       <p class="small muted" style="margin:0">Rotation and inversion apply to the next image.</p>
+      <label><span>Content</span>
+        <select name="content"><option value="images">Images (uploads, Home Assistant)</option>
+          <option value="27">Electricity prices (Nordpool sensor)</option></select></label>
+      <div id="pricefields" class="row2" hidden>
+        <label><span>Price sensor</span><input name="entity" placeholder="sensor.nordpool_kwh_se3_sek_3_10_025"></label>
+        <label><span>Redraw every (minutes)</span><input name="interval" type="number" min="5" step="5"></label>
+      </div>
       <label><span>Tag firmware</span></label>
       <div class="fw" style="margin-top:-12px">
         <span id="fwinfo" class="small">…</span>
@@ -533,6 +540,13 @@ async function openTagDialog(t) {
   setOptions(f.lut, tt && tt.shortlut > 0
     ? [[0, "Auto"], [1, "Always full refresh"], [2, "Fast (no reds)"], [3, "Fastest (ghosting!)"]]
     : [[0, "Always full refresh"]], t.lut || 0);
+  let cfg = {};
+  try { cfg = JSON.parse(t.modecfgjson || "{}") || {}; } catch (e) { /* not ours */ }
+  f.content.value = t.contentMode === 27 ? "27" : "images";
+  f.entity.value = t.contentMode === 27 ? cfg.entity || "" : "";
+  f.interval.value = t.contentMode === 27 ? cfg.interval || 15 : 15;
+  $("#pricefields").hidden = f.content.value !== "27";
+  dlgContent = f.content.value;
   $("#fwinfo").textContent = "Checking…";
   $("#fwupdate").hidden = true;
   $("#tagdlg").returnValue = "";
@@ -576,10 +590,20 @@ $("#fwfileinput").addEventListener("change", async (e) => {
   } catch (err) { toast("Failed: " + err.message); }
   $("#tagdlg").close();
 });
+let dlgContent = "images";
+$("#tagform").content.addEventListener("change", (e) => { $("#pricefields").hidden = e.target.value !== "27"; });
 $("#tagdlg").addEventListener("close", () => {
   if ($("#tagdlg").returnValue !== "save") return;
   const f = $("#tagform");
-  post("save_cfg", { mac: dlgMac, alias: f.alias.value, rotate: f.rotate.value, lut: f.lut.value, invert: f.invert.value });
+  const fields = { mac: dlgMac, alias: f.alias.value, rotate: f.rotate.value, lut: f.lut.value, invert: f.invert.value };
+  if (f.content.value === "27") {
+    fields.contentmode = 27;
+    fields.modecfgjson = JSON.stringify({ entity: f.entity.value.trim(), interval: String(Math.max(5, +f.interval.value || 15)) });
+  } else if (dlgContent === "27") {
+    fields.contentmode = 0;
+    fields.modecfgjson = "{}";
+  }
+  post("save_cfg", fields);
 });
 
 // --- image upload from the browser: scale and crop to the tag's size, send as JPEG ---

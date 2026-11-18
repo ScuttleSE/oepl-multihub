@@ -1,5 +1,5 @@
 name: OEPL multihub
-version: "0.7.2"
+version: "0.8.0"
 slug: oepl_multihub
 description: OpenEPaperLink access point with ESP32-C6 radio hubs
 url: https://github.com/ScuttleSE/oepl-multihub
@@ -10,6 +10,7 @@ init: false
 startup: application
 boot: auto
 ingress: true
+homeassistant_api: true
 ingress_port: 8080
 panel_icon: mdi:tag-text
 panel_title: OEPL Multihub
