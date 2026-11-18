@@ -240,7 +240,7 @@
         <select name="content"><option value="images">Images (uploads, Home Assistant)</option>
           <option value="27">Electricity prices (Nordpool sensor)</option></select></label>
       <div id="pricefields" class="row2" hidden>
-        <label><span>Price sensor</span><input name="entity" placeholder="sensor.nordpool_kwh_se3_sek_3_10_025"></label>
+        <label><span>Price sensor</span><select name="entity"></select></label>
         <label><span>Redraw every (minutes)</span><input name="interval" type="number" min="5" step="5"></label>
       </div>
       <label><span>Tag firmware</span></label>
@@ -543,7 +543,15 @@ async function openTagDialog(t) {
   let cfg = {};
   try { cfg = JSON.parse(t.modecfgjson || "{}") || {}; } catch (e) { /* not ours */ }
   f.content.value = t.contentMode === 27 ? "27" : "images";
-  f.entity.value = t.contentMode === 27 ? cfg.entity || "" : "";
+  const cur = t.contentMode === 27 ? cfg.entity || "" : "";
+  setOptions(f.entity, cur ? [[cur, cur]] : [["", "Looking for Nordpool sensors…"]], cur);
+  fetch(url("api/price_sensors")).then((r) => r.json()).then((r) => {
+    if (dlgMac !== t.mac) return;
+    const opts = r.sensors.map((x) => [x.entity, x.name ? `${x.name} (${x.entity})` : x.entity]);
+    if (cur && !opts.some((o) => o[0] === cur)) opts.unshift([cur, cur + " (not found)"]);
+    if (!opts.length) opts.push(["", r.error ? "Home Assistant not reachable" : "No Nordpool sensor found"]);
+    setOptions(f.entity, opts, cur || opts[0][0]);
+  }).catch(() => {});
   f.interval.value = t.contentMode === 27 ? cfg.interval || 15 : 15;
   $("#pricefields").hidden = f.content.value !== "27";
   dlgContent = f.content.value;
@@ -597,6 +605,7 @@ $("#tagdlg").addEventListener("close", () => {
   const f = $("#tagform");
   const fields = { mac: dlgMac, alias: f.alias.value, rotate: f.rotate.value, lut: f.lut.value, invert: f.invert.value };
   if (f.content.value === "27") {
+    if (!f.entity.value) return toast("Choose a price sensor");
     fields.contentmode = 27;
     fields.modecfgjson = JSON.stringify({ entity: f.entity.value.trim(), interval: String(Math.max(5, +f.interval.value || 15)) });
   } else if (dlgContent === "27") {

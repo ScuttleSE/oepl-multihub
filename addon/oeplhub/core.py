@@ -702,10 +702,15 @@ class Core:
         if tt is None:
             self.ws_err(f"{mac}: no tag type for hwType {t.hwType:02X}")
             return
-        if not entity:
-            self.ws_err(f"{mac}: electricity prices: no sensor set")
-            return
         try:
+            if not entity:  # one Nordpool sensor in HA: use it
+                found = [st["entity_id"] for st in haapi.get_states()
+                         if isinstance(st.get("attributes", {}).get("raw_today"), list)]
+                if len(found) != 1:
+                    self.ws_err(f"{mac}: electricity prices: choose a price sensor in the tag's settings"
+                                f" ({len(found)} Nordpool sensors found)")
+                    return
+                entity = found[0]
             attrs = haapi.get_state(entity).get("attributes", {})
         except haapi.HAError as e:
             self.ws_err(f"{mac}: electricity prices: {e}")

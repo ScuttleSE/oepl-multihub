@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1
+
+- The price sensor is now a dropdown with the Nordpool sensors found in Home Assistant. Saving without a sensor
+  is no longer possible.
+- A price tag without a sensor uses the Nordpool sensor automatically if there is exactly one.
+- The addon version shows correctly in the integration (it said "0.1" or "dev").
+
 ## 0.8.0
 
 - **Electricity prices** as tag content: in a tag's Settings, set Content to "Electricity prices", enter your

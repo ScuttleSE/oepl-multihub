@@ -19,6 +19,17 @@ def _base():
     raise HAError("no Home Assistant access (homeassistant_api off, and no HA_URL/HA_TOKEN)")
 
 
+def get_states(timeout=10) -> list:
+    """Every entity's state."""
+    base, token = _base()
+    req = urllib.request.Request(f"{base}/states", headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.load(r)
+    except (OSError, ValueError) as e:
+        raise HAError(f"states: {e}") from e
+
+
 def get_state(entity_id: str, timeout=10) -> dict:
     """{"state": ..., "attributes": {...}, ...} for one entity."""
     base, token = _base()

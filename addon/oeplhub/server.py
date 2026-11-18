@@ -15,6 +15,22 @@ from aiohttp import web, WSMsgType
 from . import imageenc
 from . import v2proto as v2
 from .core import Core
+
+
+def _addon_version():
+    """version: from the addon's config.yaml (copied into the image), or dev."""
+    for p in (os.path.join(os.path.dirname(__file__), "..", "config.yaml"), "/app/config.yaml"):
+        try:
+            with open(p) as f:
+                for line in f:
+                    if line.startswith("version:"):
+                        return line.split(":", 1)[1].strip().strip('"\'')
+        except OSError:
+            continue
+    return "dev"
+
+
+ADDON_VERSION = _addon_version()
 from .tagtypes import TagTypes
 
 log = logging.getLogger("server")
@@ -104,7 +120,7 @@ class Server:
         h = hubs[0].link if hubs else None
         return web.json_response({
             "alias": self.core.ap_config.get("alias", ""), "env": "oepl-multihub", "buildtime": "0",
-            "buildversion": os.environ.get("OEPL_ADDON_VERSION", "dev"), "sha": "", "psramsize": 0, "flashsize": 0, "rollback": False,
+            "buildversion": ADDON_VERSION, "sha": "", "psramsize": 0, "flashsize": 0, "rollback": False,
             "ap_version": h.hello.get("fwVersion", 0) if h else 0, "ap_type": 0xC6, "ap_typename": "ESP32-C6",
             "channel": h.status.get("channel", 0) if h else 0, "heapsize": 0, "fssize": 0,
             "resetreason": "", "crashed": False, "ntpserver": "", "ntpsync": 0,
@@ -349,6 +365,17 @@ class Server:
             raise web.HTTPNotFound()
         return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
+    async def api_price_sensors(self, request):
+        """Entities with Nordpool-style price attributes (raw_today), for the tag dialog."""
+        from . import haapi
+        try:
+            states = await self.run(haapi.get_states)
+        except haapi.HAError as e:
+            return web.json_response({"sensors": [], "error": str(e)})
+        sensors = [{"entity": st["entity_id"], "name": st.get("attributes", {}).get("friendly_name", "")}
+                   for st in states if isinstance(st.get("attributes", {}).get("raw_today"), list)]
+        return web.json_response({"sensors": sorted(sensors, key=lambda x: x["entity"])})
+
     async def api_test_image(self, request):
         form = await request.post()
         mac = self.mac_param(form.get("mac") or request.query.get("mac"))
@@ -433,6 +460,7 @@ class Server:
             web.get("/api/media/thumb", self.api_media_thumb),
             web.post("/api/media/upload", self.api_media_upload),
             web.post("/api/test_image", self.api_test_image),
+            web.get("/api/price_sensors", self.api_price_sensors),
             web.get("/api/tag_fw", self.api_tag_fw),
             web.post("/api/tag_fw", self.api_tag_fw_update),
         ])

@@ -490,6 +490,10 @@ OEPL channel plan:
        interval (≥ 5 min), `nextupdate` = next redraw, and the dataVer dedup skips unchanged charts. Panel: a
        Content select in the tag dialog. Fonts: DejaVu Sans (`font-dejavu` in the image). Tested locally with a fake
        HA API and a fakehub 0x12 tag. Not yet with the user's real sensor (`raw_today` format assumed).
+       0.8.1: on the real HA the user saved mode 27 with an empty entity (the placeholder looked filled in).
+       Now a sensor dropdown (`GET /api/price_sensors`: entities with a `raw_today` list), an empty entity
+       auto-picks the only Nordpool sensor, and the version is read from `config.yaml` copied into the image (HA
+       did not pass `BUILD_VERSION`).
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it
