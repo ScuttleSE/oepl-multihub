@@ -362,7 +362,7 @@ class Server:
         def draw():
             from . import testimage
             buf = io.BytesIO()
-            testimage.render(tt, t.rotate).save(buf, "PNG")
+            testimage.render(tt, t.rotate, t.alias or t.mac).save(buf, "PNG")
             return buf.getvalue()
         png = await self.run(draw)
         status, text = await self.run(self.core.upload_image, mac, png, 0)

@@ -40,7 +40,7 @@ def _text(draw, box, text, font, fill, align="center"):
     draw.text((x - l, y0 + (y1 - y0 - h) // 2 - t), text, font=font, fill=fill)
 
 
-def render(tt: TagType, rotate=0) -> Image.Image:
+def render(tt: TagType, rotate=0, title="") -> Image.Image:
     w, h = (tt.height, tt.width) if rotate % 2 else (tt.width, tt.height)
     colors = list(zip(tt.colornames, tt.colortable)) or [("white", (255, 255, 255)), ("black", (0, 0, 0))]
     light = max(colors, key=lambda c: _lum(c[1]))[1]
@@ -68,8 +68,15 @@ def render(tt: TagType, rotate=0) -> Image.Image:
     _text(d, (corner_w + 4, 2, mid - 2, head), "LEFT", fl, dark)
     _text(d, (mid + 2, 2, w - corner_w - 4, head), "RIGHT", fl, acc1)
 
-    # one bar per colour, the name on both halves
+    # the tag's name (or MAC) on its own line
     top, bottom = head + max(1, h // 60), h - foot
+    if title:
+        title_h = max(10, (bottom - top) // 5)
+        ft = _fit_font(d, title, w - 2 * margin, title_h - 2)
+        _text(d, (margin, top, w - margin, top + title_h), title, ft, dark)
+        top += title_h
+
+    # one bar per colour, the name on both halves
     n = len(colors)
     gap = max(1, (bottom - top) // (n * 8))
     bar_h = max(4, (bottom - top - gap * (n - 1)) // n)

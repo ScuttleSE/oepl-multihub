@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+- The test image shows the tag's name, or its address if it has no name.
+
 ## 0.7.0
 
 - New **Test image** button on each tag: draws a test pattern made for that tag (its size, rotation and
