@@ -20,17 +20,16 @@ tags ──802.15.4──  C6 hub ──USB────┘
 
 ## Status
 
-**Early testing.** Two real C6 hubs run over Wi-Fi and deliver images to real tags. Tags move between hubs when
-one goes away, but a tag can take about 15 minutes to notice. The addon with real hubs inside Home Assistant is
-being tested now.
+**Testing on real hardware.** The addon runs in Home Assistant with two Wi-Fi hubs and six real tags, replacing
+the stock access point. Tags move between hubs when one goes away, but a tag can take about 15 minutes to notice.
 
 | Part | State |
 |---|---|
-| Hub firmware (Wi-Fi and USB) | Works on real boards (50 image pushes in a row over Wi-Fi) |
+| Hub firmware (Wi-Fi and USB) | Works on real boards (49–50 of 50 image pushes in a row over Wi-Fi) |
 | Browser installer | Works (flashing and Wi-Fi setup). If Wi-Fi setup doesn't appear after flashing, unplug and replug the board |
-| Addon core and API | Works with the HA integration and simulated hubs; real hubs tested with the command-line tool |
-| Home Assistant addon packaging | Installs and starts on HA |
-| Addon web UI | First version |
+| Home Assistant addon | Works with real hubs and the OpenEPaperLink integration |
+| Addon web panel | Works: tags, hubs, settings, log, image upload, test image, backup and import from a stock AP |
+| Electricity price chart | Works from a Nordpool sensor (same look as the stock AP's day-ahead content) |
 
 ## Installing the addon
 
@@ -59,27 +58,16 @@ If the browser can't find the board, hold the **BOOT** button while plugging it 
 
 Pick a free 802.15.4 channel for each hub, away from Zigbee and Thread (channels 25 and 26 are often quiet).
 
-## Running the addon
-
-The Home Assistant addon package doesn't exist yet. For testing, the addon runs from source on any machine with
-Python 3.11 or newer:
-
-```sh
-pip install -r requirements.txt
-python -m oeplhub.server --data ./data --hub oepl-hub-1a2b.local@26 --hub oepl-hub-3c4d.local@25 --port 8080
-```
-
-`--hub` takes `HOST[:PORT]@CHANNEL` for a Wi-Fi hub or `/dev/ttyACM0@CHANNEL` for a USB hub. Then add the
-OpenEPaperLink integration in Home Assistant with the host `<this machine>:8080`.
-
 ## Known limitations
 
 - The OpenEPaperLink integration supports **one access point**. Replace your existing access point's entry rather
   than running both.
 - Home Assistant gets tag type definitions from the upstream OpenEPaperLink repository. Tag types that aren't
   merged there yet can't be drawn from Home Assistant.
-- Built-in content modes of the stock access point (weather, calendar, …) aren't supported. Home Assistant
-  provides the images.
+- Built-in content modes of the stock access point (weather, calendar, …) aren't supported, except the
+  electricity price chart. Home Assistant provides the images.
+- A hub accepts one connection at a time. Don't point other tools at a hub while the addon uses it.
+- When a hub goes away, its tags take about 15 minutes to find another hub (tag firmware behaviour).
 
 ## For developers
 
@@ -88,3 +76,5 @@ OpenEPaperLink integration in Home Assistant with the host `<this machine>:8080`
   (`ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP`)
 - `tools/hubtool.py`: talk to hubs directly, push images, or run a simulated hub
 - `tests/e2e_fake.sh`: end-to-end test with simulated hubs
+- Run the addon from source (Python 3.11+, aiohttp and Pillow):
+  `PYTHONPATH=addon python -m oeplhub.server --data ./data --hub HOST[:PORT]@CHANNEL --port 8080`
