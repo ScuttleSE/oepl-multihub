@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- Works with real ESP32-C6 hubs over Wi-Fi (tested with two hubs and real tags). Use hub firmware
+  2026.11.18 or newer from the installer.
+- Wi-Fi hubs get longer timeouts (1 s instead of 30 ms), so slow Wi-Fi no longer causes reconnects. USB hubs keep
+  the short timeouts.
+- Fixed a crash when a hub's connection closed at the wrong moment.
+- The hub status no longer counts a timeout on every connect.
+
 ## 0.5.1
 
 - The options screen now has proper names and explanations: Hubs, Address, Channel, Debug logging.

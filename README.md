@@ -20,14 +20,15 @@ tags ──802.15.4──  C6 hub ──USB────┘
 
 ## Status
 
-**Early, not ready for use yet.** The parts are written and tested against simulated hardware, and the addon has
-worked with the real Home Assistant integration. Testing on real boards and tags starts in late November 2026.
+**Early testing.** Two real C6 hubs run over Wi-Fi and deliver images to real tags. Tags move between hubs when
+one goes away, but a tag can take about 15 minutes to notice. The addon with real hubs inside Home Assistant is
+being tested now.
 
 | Part | State |
 |---|---|
-| Hub firmware (Wi-Fi and USB) | Builds; not yet tested on a board |
-| Browser installer | Online; not yet tested on a board |
-| Addon core and API | Works with the HA integration and simulated hubs |
+| Hub firmware (Wi-Fi and USB) | Works on real boards (50 image pushes in a row over Wi-Fi) |
+| Browser installer | Works (flashing and Wi-Fi setup). If Wi-Fi setup doesn't appear after flashing, unplug and replug the board |
+| Addon core and API | Works with the HA integration and simulated hubs; real hubs tested with the command-line tool |
 | Home Assistant addon packaging | Installs and starts on HA |
 | Addon web UI | First version |
 

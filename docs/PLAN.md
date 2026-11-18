@@ -474,6 +474,10 @@ OEPL channel plan:
      - Not yet / skipped: other content modes (clock, weather, …), tag mirroring, the stock drawing tool.
      - **Panel title:** HA only re-reads `panel_title` when it registers the panel. After a change, toggle "Show in
        sidebar" or restart HA.
+     - **Addon 0.6.0** (18 Nov): the host-side fixes from the hardware tests (per-transport ACK timeout,
+       startup waits, TCP race, the HELLO probe isn't counted). Next: the user updates it in HA, sets hubs
+       `192.168.50.133`@11 and `192.168.50.109`@25, and points the integration at the addon (stock AP off).
+       Test drawcustom on a 0x01/0x12 tag and panel upload on 0x94 (PR #638 still open on 18 Nov).
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it
