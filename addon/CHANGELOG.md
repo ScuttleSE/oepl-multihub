@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2
+
+- The QR code fields now hide when another content type is chosen.
+
 ## 0.10.1
 
 - The tag settings dialog keeps its width: a long price sensor name no longer makes it wider. The QR code
