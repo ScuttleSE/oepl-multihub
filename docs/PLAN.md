@@ -373,6 +373,12 @@ OEPL channel plan:
        no firmware-side counts.
      - Pushed 18 Nov: fork `308c75f`, installer version `2026.11.18-308c75f`. Next: reflash board 1 with the
        installer (tests Improv), then run the 50-push test again on a plain USB charger (no PC).
+     - **Charger test, 18 Nov 07:41–08:46** (installer firmware, Improv setup worked, board on a USB charger):
+       49/50 OK. Median 73 s. 2 pushes needed a second offer. Same burst pattern.
+       The failure was push #1: the host link dropped ("3 heartbeats missed") 30 s after link-up, right after the
+       first two bursts. `hubtool push` doesn't reconnect, so it waited out its 180 s. No firmware log (no USB).
+       Every later push connected fine. Open: find out why (Wi-Fi hiccup or a firmware stall), and make the host
+       reconnect and resume a pending push (the addon's `Core` should do this; check it).
 5. [x] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
