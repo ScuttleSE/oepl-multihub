@@ -104,7 +104,7 @@ class Server:
         h = hubs[0].link if hubs else None
         return web.json_response({
             "alias": self.core.ap_config.get("alias", ""), "env": "oepl-multihub", "buildtime": "0",
-            "buildversion": "0.1", "sha": "", "psramsize": 0, "flashsize": 0, "rollback": False,
+            "buildversion": os.environ.get("OEPL_ADDON_VERSION", "dev"), "sha": "", "psramsize": 0, "flashsize": 0, "rollback": False,
             "ap_version": h.hello.get("fwVersion", 0) if h else 0, "ap_type": 0xC6, "ap_typename": "ESP32-C6",
             "channel": h.status.get("channel", 0) if h else 0, "heapsize": 0, "fssize": 0,
             "resetreason": "", "crashed": False, "ntpserver": "", "ntpsync": 0,
