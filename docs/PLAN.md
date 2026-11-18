@@ -494,6 +494,8 @@ OEPL channel plan:
        Now a sensor dropdown (`GET /api/price_sensors`: entities with a `raw_today` list), an empty entity
        auto-picks the only Nordpool sensor, and the version is read from `config.yaml` copied into the image (HA
        did not pass `BUILD_VERSION`).
+       0.8.2: `SUPERVISOR_TOKEN` wasn't in run.sh's environment (the base image's s6 `/init` runs CMD without the
+       container env). `haapi` falls back to `/run/s6/container_environment/SUPERVISOR_TOKEN`.
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it

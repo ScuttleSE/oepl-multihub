@@ -9,8 +9,22 @@ class HAError(Exception):
     pass
 
 
-def _base():
+def _supervisor_token():
     token = os.environ.get("SUPERVISOR_TOKEN")
+    if token:
+        return token
+    # s6 in the HA base image starts run.sh without the container environment; it keeps it here
+    for p in ("/run/s6/container_environment/SUPERVISOR_TOKEN", "/var/run/s6/container_environment/SUPERVISOR_TOKEN"):
+        try:
+            with open(p) as f:
+                return f.read().strip()
+        except OSError:
+            continue
+    return None
+
+
+def _base():
+    token = _supervisor_token()
     if token:
         return "http://supervisor/core/api", token
     url, token = os.environ.get("HA_URL"), os.environ.get("HA_TOKEN")

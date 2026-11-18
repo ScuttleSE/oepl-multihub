@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2
+
+- Fixed "Home Assistant not reachable": the addon now finds its Home Assistant access token.
+
 ## 0.8.1
 
 - The price sensor is now a dropdown with the Nordpool sensors found in Home Assistant. Saving without a sensor
