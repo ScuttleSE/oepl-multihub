@@ -388,9 +388,17 @@ OEPL channel plan:
      `invalid header: 0xffffffff` and a WDT reset about every 3 s (normal for a blank board). After the installer
      flash it stayed in ROM download mode (`boot:0x0 USB_BOOT`, "wait usb download"), so Improv got no answer.
      Unplugging and replugging it fixed that. If Improv is silent after flashing, power-cycle the board.
+   - **Roaming test, 18 Nov** (both hubs on USB chargers, Wi-Fi only): hub 1 `.133` on ch 11, hub 2 `.109` on ch 25.
+     Tag `8C73DAFFFE5D531B` (0x94) was on hub 1. Hub 1 unplugged at about 09:13. The tag first checked in on hub 2
+     (ch 25) at 09:29, **about 16 min later**. Before that, hub 2 heard 3 unrelated frames and sent nothing. Then an
+     image push through hub 2 completed. The tag waits a long time before it scans, which is why it took 16 min.
+     Look into how the tag decides to rescan, and whether the host can do anything about it (it can't change tag
+     firmware).
+     - Gotcha: a hub takes **one TCP client**, and a new one replaces the old one. Two host programs on one hub keep
+       knocking each other off ("connection closed by the hub" over and over). The addon must be the only client.
 5. [x] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
-6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
+6. [x] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
    other hub, and gets its pending image.
 7. [ ] **Addon:**
    - **Base written and tested against simulated hubs** (16 Nov), not yet against HA:
