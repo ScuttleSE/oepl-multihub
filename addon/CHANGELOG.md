@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- Click a tag's preview to see it at full size, pixel for pixel as on the tag.
+
 ## 0.7.1
 
 - The test image shows the tag's name, or its address if it has no name.
