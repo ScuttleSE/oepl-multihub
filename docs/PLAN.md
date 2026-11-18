@@ -384,6 +384,10 @@ OEPL channel plan:
        when it is offered the same dataVer. `hubtool push` now does the same: on a lost link it reconnects and
        offers the data again until `--timeout`. Tested by killing and restarting the fakehub mid-push, and with a
        normal push to the real hub.
+   - **Board 2** (`98:88:e0:72:ec:9c`, `oepl-hub-ec9c`, 18 Nov): arrived with empty flash, so it loops with
+     `invalid header: 0xffffffff` and a WDT reset about every 3 s (normal for a blank board). After the installer
+     flash it stayed in ROM download mode (`boot:0x0 USB_BOOT`, "wait usb download"), so Improv got no answer.
+     Unplugging and replugging it fixed that. If Improv is silent after flashing, power-cycle the board.
 5. [x] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the
