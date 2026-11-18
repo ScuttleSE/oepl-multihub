@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1
+
+- The tag settings dialog keeps its width: a long price sensor name no longer makes it wider. The QR code
+  fields line up with the other fields.
+
 ## 0.10.0
 
 - New content type "QR code": choose a type (website, Wi-Fi login, contact card, phone call, SMS, email,
