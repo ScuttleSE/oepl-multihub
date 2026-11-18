@@ -35,6 +35,9 @@ class TagType:
         self.zlib = int(d["zlib_compression"], 16) if isinstance(d.get("zlib_compression"), str) else 0
         self.g5 = int(d["g5_compression"], 16) if isinstance(d.get("g5_compression"), str) else 0
         self.shortlut = d.get("shortlut", 0)
+        self.template = d.get("template") or {}
+        self.usetemplate = d.get("usetemplate")
+        self.highlight_color = d.get("highlight_color", 2)
 
     @classmethod
     def load(cls, path):

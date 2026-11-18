@@ -496,6 +496,11 @@ OEPL channel plan:
        did not pass `BUILD_VERSION`).
        0.8.2: `SUPERVISOR_TOKEN` wasn't in run.sh's environment (the base image's s6 `/init` runs CMD without the
        container env). `haapi` falls back to `/run/s6/container_environment/SUPERVISOR_TOKEN`.
+       0.9.0: `pricechart.render()` is now a port of the stock `content_dayahead.inl`: template "27" via
+       `usetemplate` (0x12 → 0x02, 0x94 → 0x41), `calculateDataRange` (from 1 h ago, about 5 px bars, earlier bars
+       fill the area), percentile colours (black/darkgray/pink/red at 40/80/90; bpp 3/4 and highlight_color 3
+       variants), `calculateYAxisScale`, label spacing, the arrow and dashes, cheapest 3 h block per day (lightgray),
+       VLW fonts via `jsondraw.Fonts`, ordered dither 2 like the stock AP. Price = öre/cent per kWh (stock: cents).
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it

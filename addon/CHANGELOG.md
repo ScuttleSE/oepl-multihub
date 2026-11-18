@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0
+
+- The electricity price chart now uses the stock access point's "Dayahead prices" layout: time and price at the
+  top, bars coloured by price level (cheapest 40 % black, then grey, pink, and the top 10 % red), a "now" arrow,
+  gridlines with labels, hour labels, and the cheapest 3-hour block per day shaded under the time axis. Same
+  fonts and per-tag-type layout as the stock access point. Prices are shown in öre (or cents) per kWh.
+
 ## 0.8.2
 
 - Fixed "Home Assistant not reachable": the addon now finds its Home Assistant access token.

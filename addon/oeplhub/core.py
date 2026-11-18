@@ -719,9 +719,12 @@ class Core:
         if not prices:
             self.ws_err(f"{mac}: electricity prices: {entity} has no raw_today prices")
             return
-        img = pricechart.render(tt, prices, datetime.now().astimezone(), pricechart.currency_of(attrs), t.rotate,
-                                t.alias or "")
-        data_type, data = imageenc.encode(img, tt, dither=0, rotate=t.rotate, tag_fw=t.ver, invert=t.invert == 1)
+        from . import jsondraw
+        if self.fonts is None:
+            self.fonts = jsondraw.Fonts(os.path.join(self.data_dir, "fonts"))
+        img = pricechart.render(tt, prices, datetime.now().astimezone(), pricechart.currency_of(attrs), self.fonts,
+                                pricechart.template_for(tt, self.tagtypes.get), t.rotate)
+        data_type, data = imageenc.encode(img, tt, dither=2, rotate=t.rotate, tag_fw=t.ver, invert=t.invert == 1)
         with self.lock:
             t.nextupdate = now() + interval * 60
             self.db.dirty = True
