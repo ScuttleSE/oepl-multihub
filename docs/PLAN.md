@@ -3,35 +3,43 @@
 Project writeup, plan and working notes, for agents and developers. Started 16 Nov 2026. The user-facing intro is
 `README.md` in the repo root.
 
-## Current state and how to continue (16 Nov 2026)
+## Current state and how to continue (handoff, 18 Nov 2026)
 
-**Waiting for hardware:** 2× ESP32-C6 Super Mini, due about 19 Nov. Everything below is built and tested without
-hardware (against the simulated hub in `oeplhub/fakehub.py`). Nothing has run on a real C6 or a real tag yet.
+**Running now on real hardware** (both hubs on USB chargers, Wi-Fi only, installer firmware `2026.11.18-308c75f`):
+- **Hub 1** `oepl-hub-e7f4`, MAC `98:88:e0:70:e7:f4`, `192.168.50.133`, auto channel **26** (the user left it on auto).
+- **Hub 2** `oepl-hub-ec9c`, MAC `98:88:e0:72:ec:9c`, `192.168.50.109`, channel **25**.
+- **Addon** 0.9.0 installed in HA (`192.168.0.80`, API on port 80, `/api/hubs`, `/get_db`). It's the only client
+  of both hubs (**a hub takes one TCP client**; don't run `hubtool` against them while the addon runs). The stock AP
+  `192.168.50.205` is off, and its HA integration entry is disabled. The integration points at the addon.
+- **Tags** (all found the hubs by themselves about 20 min after the addon started): `8C73DAFFFE5D531B` 0x94 5.85"
+  BWRY, `7C31FAFFFE83FCB9` 0x94, `0000017C3F4F4119` 0x12 4.2" **"elpriser"** (content 27, electricity prices from
+  `sensor.nordpool_kwh_se4_sek_3_10_0`, every 15 min), `0000021A7E103B18` "fyrfack2", `0000021ECCFF3B14`
+  "fyrfack1", `0000021EEA023B12` "garden" (all 0x01 2.9").
 
-**What exists:**
-- **Hub firmware:** branch `host-link` of `ScuttleSE/OpenEPaperLink`, project `ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP`.
-  Kconfig choice "Host link": UART (stock, default), USB (`main/host_usb.c`), Wi-Fi (`main/host_wifi.c` with mDNS and
-  TCP 6639, `main/improv.c` for Improv Serial, own partition table `partitions-wifi.csv`). All three compile.
-- **Installer:** https://scuttlese.github.io/oepl-multihub/ (ESP Web Tools). It's built by
-  `.github/workflows/firmware.yml` from the fork commit in `firmware/upstream-ref`, using `firmware/build.sh`.
-  **After pushing to the fork, update `firmware/upstream-ref`** or the installer keeps the old build.
-- **Python package `oeplhub/`:** `v2proto` (framing), `transport` (serial and TCP), `link` (`HubLink`), `fakehub`,
-  `imageenc` (stock AP image format, checked against a real AP file), `tagdb`, `tagtypes`, `core` (AP logic, several
-  hubs, roaming), `server` (stock-compatible HTTP and websocket API, aiohttp).
-- **Tools:** `tools/hubtool.py` (`monitor`, `push --image/--file`, `fakehub --hw --tag`), `tests/e2e_fake.sh`, and
-  `tests/stop_fakes.sh`.
-- **Tested with the real HA integration** (step 7): drawing on a fake tag worked end to end.
+**Done since 16 Nov** (details under the plan steps below): steps 1, 3, 5 and 6 checked on real boards.
+- Firmware fixes on the fork: ROM printf off USB, Wi-Fi/802.15.4 coex enabled, coex boost only around block bursts,
+  Wi-Fi power save off, 1 s event-ACK wait over Wi-Fi, Improv scan while reconnecting, diag RPC `0xFE`.
+- Wi-Fi: 50/50 pushes over USB power, 49/50 on a charger (one host link drop, cause unknown; the host now
+  reconnects). Roaming between hubs on different channels works but takes about 16 min (tag firmware; we can't
+  change it).
+- Addon 0.6–0.9: per-transport ACK timeouts, test image per tag (`/api/test_image`), duplicate-image skip,
+  full-size preview, electricity price chart (port of the stock dayahead content, reading HA through the
+  Supervisor), version in `/sysinfo`.
 
-**Next steps, in order:**
-1. **When the boards arrive:** use the installer's **USB hub** on one board, then `python3 tools/hubtool.py monitor
-   /dev/ttyACM0 --channel 26` and watch for tag 1 (`8C73DAFFFE5D531B`; it's on the stock AP on channel 11 now, so
-   it needs a rescan or the stock AP switched off). Then `push … --image x.png --tagtype tagtypes/94.json --tag-fw
-   0x2B`. Check that opening the port doesn't reset the chip (DTR/RTS) and look at the `lateMs` timing.
-2. Reflash as a **Wi-Fi hub** with the installer, which tests Improv. Repeat step 1 against `oepl-hub-xxxx.local`.
-   Then do the coexistence test (plan step 5) and the roaming test with two hubs (step 6).
-3. **Addon packaging** for HA (`config.yaml`, Dockerfile, hub list in the options, port 80 or ingress), then keep
-   pending items across restarts, then the HA-style web UI.
-4. **Ask upstream** to merge PR #638 (`94.json`). Until then HA can't draw on 0x94 tags.
+**Open / next ideas** (nothing in progress; ask the user what's next):
+1. The user hasn't confirmed the 0.9.0 price chart on the real tag yet. Check the "elpriser" preview first
+   (`/api/preview/0000017C3F4F4119` on the addon). The real sensor's `raw_today` format worked with 0.8.2.
+2. The cause of the one host link drop on a charger is unknown. It needs a USB log run (debug build: console on USB,
+   Improv off, see step 4 notes) to catch it.
+3. Faster failover: test both hubs on the **same channel** (the tag then needs no scan), and see whether two radios
+   answering the same check-in confuses tags. The stock content mode 18 "Set Tag Config" has a "Tag Roaming"
+   option (the tag periodically scans for a stronger AP), which may also help. Not explored yet.
+4. Max sleep, quiet hours and "stop sleep" are ported (`_idle_requests`) but never seen working on a real tag.
+5. Upstream PR #638 (`94.json`) is still open, so the HA integration can't draw on 0x94 tags (the addon panel can).
+6. Plan step 8 (easy install for other users) and step 9 (later items).
+
+**User preferences:** short answers, one step at a time. Wants a realistic user experience with as few manual
+"fixes" as possible. For firmware: build and test locally, and push only when it works.
 
 **Environment notes:**
 - **ESP-IDF:** `export IDF_TOOLS_PATH=$PWD/toolchain/.espressif; . toolchain/esp-idf/export.sh`, then
@@ -39,11 +47,21 @@ hardware (against the simulated hub in `oeplhub/fakehub.py`). Nothing has run on
   `upstream/` (the fork clone, remote `upstream` = the official repo) are git-ignored.
 - **Network:** the dev PC is `192.168.0.3`. HA reaches it, and HA's requests come from `192.168.0.80`. The stock AP
   is `192.168.50.205` (read-only use was allowed).
-- **HA:** the user's real HA has the stock AP's OEPL entry. To test the addon, the user must disable that entry
-  (the integration supports one AP), then re-enable it afterwards. Use fake MACs (`00000000FA4E000x`) and a tag type
-  that is upstream (`--hw 0x41`).
+- **HA:** the addon now runs for real in the user's HA, with the stock AP entry disabled. Don't change HA yourself;
+  ask the user. The addon reads HA states only through the Supervisor (`homeassistant_api`; the token is read from
+  `/run/s6/container_environment/SUPERVISOR_TOKEN`).
+- **Local addon test:** `HA_URL=… HA_TOKEN=… PYTHONPATH=addon python3 -m oeplhub.server --data DIR --hub
+  127.0.0.1:PORT@CH --tagtypes addon/tagtypes --port 18081`, with `hubtool.py fakehub --hw 0x12` and a small fake HA
+  (`/api/states`). Panel checks: headless Chromium through CDP (aiohttp websocket).
+- **Hub log without a UART adapter:** a throwaway build with `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`,
+  `CONFIG_OEPL_IMPROV_SERIAL=n` in its own `-B` dir. Reset the board with `esptool.py --after hard_reset chip_id`; a
+  DTR/RTS toggle from pyserial lands it in download mode.
+- **Improv by hand:** `/tmp/opencode/improv.py` is gone with the session. It's a small script that writes `IMPROV`
+  packets (state 2, info 3, scan 4, diag 0xFE) to `/dev/ttyACM0` (see `main/improv.c`).
 - **Gotcha:** `pkill -f`/`pgrep -f` with a pattern that also appears in your own shell command kills that shell.
-  Use `tests/stop_fakes.sh` (anchored pattern).
+  Use `tests/stop_fakes.sh` (anchored pattern), or a bracket trick like `pkill -f "hubtool.py monito[r]"`.
+- **Gotcha:** sourcing ESP-IDF's `export.sh` switches `python3` to its venv (no Pillow). Run hubtool with the system
+  Python.
 - **Python:** Pillow and aiohttp are installed on the dev PC (Python 3.14). `gh` is logged in as ScuttleSE.
 
 ## Goal
