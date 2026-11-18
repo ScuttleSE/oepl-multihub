@@ -379,6 +379,11 @@ OEPL channel plan:
        first two bursts. `hubtool push` doesn't reconnect, so it waited out its 180 s. No firmware log (no USB).
        Every later push connected fine. Open: find out why (Wi-Fi hiccup or a firmware stall), and make the host
        reconnect and resume a pending push (the addon's `Core` should do this; check it).
+     - Host recovery (18 Nov): `Core` already reconnects (`_keep_up`, every 3 s) and re-announces queued items in
+       `_on_state`. An `XFER_COMPLETE` lost during a drop heals itself: the tag answers `XFER_COMPLETE` at once
+       when it is offered the same dataVer. `hubtool push` now does the same: on a lost link it reconnects and
+       offers the data again until `--timeout`. Tested by killing and restarting the fakehub mid-push, and with a
+       normal push to the real hub.
 5. [x] **Coexistence test:** 50+ image pushes over Wi-Fi. Count `XFER_TIMEOUT`s, retransmits and missed check-ins.
    If it's bad, use the ESP32-bridge fallback.
 6. [ ] **Roaming test:** two hubs on channels 25 and 26. Power one off and confirm that the tag rescans, appears on the

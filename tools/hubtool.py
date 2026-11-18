@@ -130,24 +130,47 @@ def cmd_push(args):
             result["type"] = ftype
             done.set()
 
-    link = HubLink("hub1", open_transport(args.hub), on_event=on_event, ack_timeout_ms=args.ack_timeout)
-    link.connect()
-    if args.channel:
-        link.set_config(channel=args.channel)
-    follows = link.hello["caps"] & v2.CAP_BLOCK_CACHE and not args.no_preload
-    link.set_pending(mac, ver, len(data), args.type, args.arg, ttl_min=args.ttl, data_follows=bool(follows))
+    lost = threading.Event()
+
+    def on_state(link, up):
+        if not up:
+            lost.set()
+
+    link = HubLink("hub1", open_transport(args.hub), on_event=on_event, on_state=on_state,
+                   ack_timeout_ms=args.ack_timeout)
     t0 = time.monotonic()
-    if follows:
-        link.send_data(ver, data)
-        log.info("%d bytes in the radio's cache in %.0f ms", len(data), (time.monotonic() - t0) * 1000)
-    log.info("waiting for %s to check in (ver %016X)", args.mac, ver)
-    if not done.wait(args.timeout):
+    deadline = t0 + args.timeout
+    # On a lost link: connect again and offer the data again. If the tag finished while the link was
+    # down, it answers XFER_COMPLETE at once when offered the same dataVer.
+    while not done.is_set() and time.monotonic() < deadline:
+        lost.clear()
+        try:
+            link.connect()
+            if args.channel:
+                link.set_config(channel=args.channel)
+            follows = link.hello["caps"] & v2.CAP_BLOCK_CACHE and not args.no_preload
+            link.set_pending(mac, ver, len(data), args.type, args.arg, ttl_min=args.ttl, data_follows=bool(follows))
+            if follows:
+                t1 = time.monotonic()
+                link.send_data(ver, data)
+                log.info("%d bytes in the radio's cache in %.0f ms", len(data), (time.monotonic() - t1) * 1000)
+        except (LinkError, OSError) as e:
+            log.warning("offering the data failed: %s; trying again", e)
+            link.close()
+            time.sleep(min(3, max(0, deadline - time.monotonic())))
+            continue
+        log.info("waiting for %s to check in (ver %016X)", args.mac, ver)
+        while not done.is_set() and not lost.is_set() and time.monotonic() < deadline:
+            done.wait(min(0.5, max(0, deadline - time.monotonic())))
+        if lost.is_set() and not done.is_set():
+            log.warning("link lost while waiting; connecting again")
+            time.sleep(1)
+    link.close()
+    if not done.is_set():
         log.error("no result within %d s", args.timeout)
-        link.close()
         return 1
     ok = result["type"] == v2.XFER_COMPLETE
     log.info("%s after %.1f s", "complete" if ok else "TIMEOUT", time.monotonic() - t0)
-    link.close()
     return 0 if ok else 1
 
 
