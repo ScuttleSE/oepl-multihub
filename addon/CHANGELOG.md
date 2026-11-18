@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+- New content type "QR code": choose a type (website, Wi-Fi login, contact card, phone call, SMS, email,
+  location, calendar event or plain text) and fill in its fields. The code is drawn once and sent to the tag,
+  with an optional caption. On wide tags, the text goes beside the code.
+
 ## 0.9.0
 
 - The electricity price chart now uses the stock access point's "Dayahead prices" layout: time and price at the

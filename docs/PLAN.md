@@ -489,6 +489,10 @@ OEPL channel plan:
        `AUTO_CHANNELS` = 26, 25, 20, 15, 11, skipping channels set on other hubs.
      - Groups: not needed in the addon. The HA integration's actions accept `label_id` and `area_id` targets (see
        `services.py`), so HA labels serve as tag groups.
+     - **Addon 0.10.0** (18 Nov): content mode 10 "QR code" (`oeplhub/qrcontent.py`, needs `segno`, installed with
+       pip in the Dockerfile). Types: URL, Wi-Fi, vCard, tel, SMS, mailto, geo, VEVENT, text; fields per type in the
+       tag dialog. Drawn once when the settings are saved (`draw_qr`). Wide panels: code left, caption right.
+       Tested by rendering 0x94, 0x12 and 0x01 locally; not yet on a real tag or in the addon container.
      - Not yet / skipped: other content modes (clock, weather, …), tag mirroring, the stock drawing tool.
      - **Panel title:** HA only re-reads `panel_title` when it registers the panel. After a change, toggle "Show in
        sidebar" or restart HA.

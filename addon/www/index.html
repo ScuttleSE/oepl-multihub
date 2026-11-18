@@ -238,10 +238,21 @@
       <p class="small muted" style="margin:0">Rotation and inversion apply to the next image.</p>
       <label><span>Content</span>
         <select name="content"><option value="images">Images (uploads, Home Assistant)</option>
-          <option value="27">Electricity prices (Nordpool sensor)</option></select></label>
+          <option value="27">Electricity prices (Nordpool sensor)</option>
+          <option value="10">QR code</option></select></label>
       <div id="pricefields" class="row2" hidden>
         <label><span>Price sensor</span><select name="entity"></select></label>
         <label><span>Redraw every (minutes)</span><input name="interval" type="number" min="5" step="5"></label>
+      </div>
+      <div id="qrfields" class="form" hidden>
+        <label><span>QR code type</span>
+          <select name="qrkind"><option value="url">Website (URL)</option><option value="wifi">Wi-Fi login</option>
+            <option value="contact">Contact card</option><option value="phone">Phone call</option>
+            <option value="sms">Text message (SMS)</option><option value="email">Email</option>
+            <option value="location">Location</option><option value="event">Calendar event</option>
+            <option value="text">Plain text</option></select></label>
+        <div id="qrinputs" class="form"></div>
+        <label><span>Caption on the tag (optional)</span><input name="qrcaption"></label>
       </div>
       <label><span>Tag firmware</span></label>
       <div class="fw" style="margin-top:-12px">
@@ -542,7 +553,11 @@ async function openTagDialog(t) {
     : [[0, "Always full refresh"]], t.lut || 0);
   let cfg = {};
   try { cfg = JSON.parse(t.modecfgjson || "{}") || {}; } catch (e) { /* not ours */ }
-  f.content.value = t.contentMode === 27 ? "27" : "images";
+  f.content.value = t.contentMode === 27 || t.contentMode === 10 ? String(t.contentMode) : "images";
+  const qcfg = t.contentMode === 10 ? cfg : {};
+  f.qrkind.value = qcfg.kind || "url";
+  f.qrcaption.value = qcfg.caption || "";
+  qrInputs(f.qrkind.value, qcfg);
   const cur = t.contentMode === 27 ? cfg.entity || "" : "";
   setOptions(f.entity, cur ? [[cur, cur]] : [["", "Looking for Nordpool sensors…"]], cur);
   fetch(url("api/price_sensors")).then((r) => r.json()).then((r) => {
@@ -553,7 +568,7 @@ async function openTagDialog(t) {
     setOptions(f.entity, opts, cur || opts[0][0]);
   }).catch(() => {});
   f.interval.value = t.contentMode === 27 ? cfg.interval || 15 : 15;
-  $("#pricefields").hidden = f.content.value !== "27";
+  showContentFields(f.content.value);
   dlgContent = f.content.value;
   $("#fwinfo").textContent = "Checking…";
   $("#fwupdate").hidden = true;
@@ -599,7 +614,47 @@ $("#fwfileinput").addEventListener("change", async (e) => {
   $("#tagdlg").close();
 });
 let dlgContent = "images";
-$("#tagform").content.addEventListener("change", (e) => { $("#pricefields").hidden = e.target.value !== "27"; });
+const QR_FIELDS = {
+  url: [["url", "URL", "url"]],
+  wifi: [["ssid", "Network name (SSID)"], ["password", "Password"],
+    ["security", "Security", ["WPA", "WPA/WPA2/WPA3"], ["WEP", "WEP"], ["nopass", "None (open)"]],
+    ["hidden", "Hidden network", ["", "No"], ["1", "Yes"]],
+    ["showpass", "Show name and password as text", ["1", "Yes"], ["", "No"]]],
+  contact: [["name", "Name"], ["phone", "Phone", "tel"], ["email", "Email", "email"], ["org", "Company"], ["url", "Website", "url"]],
+  phone: [["phone", "Phone number", "tel"]],
+  sms: [["phone", "Phone number", "tel"], ["message", "Message"]],
+  email: [["to", "To", "email"], ["subject", "Subject"], ["body", "Message"]],
+  location: [["lat", "Latitude", "number"], ["lon", "Longitude", "number"]],
+  event: [["summary", "Title"], ["start", "Start", "datetime-local"], ["end", "End", "datetime-local"], ["location", "Place"]],
+  text: [["text", "Text"]],
+};
+function qrInputs(kind, cfg) {
+  const box = $("#qrinputs");
+  box.innerHTML = "";
+  for (const [key, label, type, ...opts] of QR_FIELDS[kind] || []) {
+    const l = document.createElement("label");
+    l.innerHTML = `<span>${esc(label)}</span>`;
+    let el;
+    if (Array.isArray(type)) {
+      el = document.createElement("select");
+      for (const [v, t] of [type, ...opts]) el.add(new Option(t, v));
+    } else {
+      el = document.createElement("input");
+      el.type = type || "text";
+      if (type === "number") el.step = "any";
+    }
+    el.dataset.qr = key;
+    if (cfg[key] !== undefined) el.value = cfg[key] === true ? "1" : cfg[key] === false ? "" : cfg[key];
+    l.append(el);
+    box.append(l);
+  }
+}
+function showContentFields(v) {
+  $("#pricefields").hidden = v !== "27";
+  $("#qrfields").hidden = v !== "10";
+}
+$("#tagform").content.addEventListener("change", (e) => showContentFields(e.target.value));
+$("#tagform").qrkind.addEventListener("change", (e) => qrInputs(e.target.value, {}));
 $("#tagdlg").addEventListener("close", () => {
   if ($("#tagdlg").returnValue !== "save") return;
   const f = $("#tagform");
@@ -608,7 +663,13 @@ $("#tagdlg").addEventListener("close", () => {
     if (!f.entity.value) return toast("Choose a price sensor");
     fields.contentmode = 27;
     fields.modecfgjson = JSON.stringify({ entity: f.entity.value.trim(), interval: String(Math.max(5, +f.interval.value || 15)) });
-  } else if (dlgContent === "27") {
+  } else if (f.content.value === "10") {
+    const cfg = { kind: f.qrkind.value, caption: f.qrcaption.value.trim() };
+    for (const el of $("#qrinputs").querySelectorAll("[data-qr]")) cfg[el.dataset.qr] = el.value.trim();
+    for (const k of ["hidden", "showpass"]) if (k in cfg) cfg[k] = cfg[k] === "1";
+    fields.contentmode = 10;
+    fields.modecfgjson = JSON.stringify(cfg);
+  } else if (dlgContent !== "images") {
     fields.contentmode = 0;
     fields.modecfgjson = "{}";
   }

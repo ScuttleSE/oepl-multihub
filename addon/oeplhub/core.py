@@ -21,6 +21,7 @@ from .tagdb import NEVER, TagDB
 from .transport import open_transport
 
 CONTENT_PRICES = 27  # "Dayahead prices" in the stock AP; here from a Home Assistant Nordpool sensor
+CONTENT_QR = 10  # "QR code" in the stock AP; drawn once, when the settings change
 
 log = logging.getLogger("core")
 
@@ -675,7 +676,7 @@ class Core:
         mono = time.monotonic()
         with self.lock:
             todo = [t.mac for t in self.db.tags.values()
-                    if t.contentMode == CONTENT_PRICES and mono >= due.get(t.mac, 0)]
+                    if t.contentMode in (CONTENT_PRICES, CONTENT_QR) and mono >= due.get(t.mac, 0)]
         for mac in todo:
             t = self.db.get(mac)
             try:
@@ -684,6 +685,10 @@ class Core:
                 cfg = {}
             if not isinstance(cfg, dict):
                 cfg = {}
+            if t.contentMode == CONTENT_QR:
+                due[mac] = float("inf")
+                self.draw_qr(mac, cfg)
+                continue
             interval = max(5, int(cfg.get("interval") or 15))
             due[mac] = mono + interval * 60
             self.draw_prices(mac, cfg.get("entity", ""), interval)
@@ -729,6 +734,22 @@ class Core:
             t.nextupdate = now() + interval * 60
             self.db.dirty = True
         self.queue_data(mac, data_type, data, imageenc.data_type_arg(lut=t.lut), self.max_sleep(interval),
+                        f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending")
+
+    def draw_qr(self, mac, cfg):
+        from . import qrcontent
+        t = self.db.get(mac)
+        tt = self.tagtypes.get(t.hwType) if t else None
+        if tt is None:
+            return
+        try:
+            img = qrcontent.render(tt, cfg, t.rotate)
+        except Exception as e:
+            log.exception("QR code for %s", mac)
+            self.ws_err(f"{mac}: QR code: {e}")
+            return
+        data_type, data = imageenc.encode(img, tt, dither=0, rotate=t.rotate, tag_fw=t.ver, invert=t.invert == 1)
+        self.queue_data(mac, data_type, data, imageenc.data_type_arg(lut=t.lut), self.max_sleep(0),
                         f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending")
 
     # --- variables for JSON templates (/set_var, /set_vars, checkVars) ---------------------------

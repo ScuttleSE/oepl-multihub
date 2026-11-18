@@ -30,6 +30,7 @@ the stock access point. Tags move between hubs when one goes away, but a tag can
 | Home Assistant addon | Works with real hubs and the OpenEPaperLink integration |
 | Addon web panel | Works: tags, hubs, settings, log, image upload, test image, backup and import from a stock AP |
 | Electricity price chart | Works from a Nordpool sensor (same look as the stock AP's day-ahead content) |
+| QR code | Website, Wi-Fi, contact, phone, SMS, email, location, event or text; drawn once with a caption |
 
 ## Installing the addon
 
