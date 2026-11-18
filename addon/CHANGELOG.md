@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+- New **Test image** button on each tag: draws a test pattern made for that tag (its size, rotation and
+  colours), with corner labels, one bar per colour and fine line patterns. Also available as
+  `POST /api/test_image` with `mac`.
+- An image that is the same as the one already waiting for the tag is no longer queued and sent again. (An image
+  the same as the one on the tag was already skipped.)
+- The addon reports its own version to the integration (`/sysinfo`).
+
 ## 0.6.0
 
 - Works with real ESP32-C6 hubs over Wi-Fi (tested with two hubs and real tags). Use hub firmware

@@ -395,6 +395,7 @@ function tagCard(t) {
     <div class="actions">
       <button class="flat" data-act="settings">Settings</button>
       <button class="flat" data-act="upload">Upload image</button>
+      <button class="flat" data-act="testimage">Test image</button>
       <button class="flat" data-act="refresh">Refresh</button>
       <button class="flat" data-act="ledflash">Flash LED</button>
       ${t.pending ? `<button class="flat" data-act="clear">Clear pending</button>` : ""}
@@ -449,6 +450,7 @@ $("#tags").addEventListener("click", async (e) => {
   const act = b.dataset.act;
   if (act === "settings") return openTagDialog(t);
   if (act === "upload") { uploadMac = mac; return openMedia(t); }
+  if (act === "testimage") return post("api/test_image", { mac });
   if (act === "del" && !confirm(`Delete ${t.alias || mac} from the database? It comes back when it checks in again.`)) return;
   if ((act === "reboot" || act === "scan") && !confirm(`Send "${act}" to ${t.alias || mac}?`)) return;
   const r = await post("tag_cmd", { mac, cmd: act });

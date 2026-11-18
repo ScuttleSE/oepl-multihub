@@ -596,6 +596,11 @@ class Core:
             self.ws_log("new image is the same as current image. not updating tag.")
             self.ws_tag(mac)
             return
+        with self.lock:
+            waiting = any(i.ver == ver for i in self.queues.get(mac, []))
+        if waiting:
+            self.ws_log("new image is the same as the one waiting for the tag. not queued again.")
+            return
         if t is not None:
             t.pending_idle = (next_checkin & 0x7FFF) + 5 if next_checkin & 0x8000 else next_checkin * 60 + 60
         name = f"/current/{mac}_{int(time.monotonic() * 1000) % 1000000}.pending"

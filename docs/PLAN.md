@@ -478,6 +478,10 @@ OEPL channel plan:
        startup waits, TCP race, the HELLO probe isn't counted). Next: the user updates it in HA, sets hubs
        `192.168.50.133`@11 and `192.168.50.109`@25, and points the integration at the addon (stock AP off).
        Test drawcustom on a 0x01/0x12 tag and panel upload on 0x94 (PR #638 still open on 18 Nov).
+     - **Addon 0.7.0** (18 Nov): a test image per tag (`oeplhub/testimage.py`: border, TL/TR/BL/BR, LEFT/RIGHT, one
+       bar per `colortable` entry with its name, 1 px line patterns; canvas swapped for rotate 1/3; sent with
+       dither 0 as PNG). Panel button and `POST /api/test_image mac=`. Skips an image whose dataVer is already
+       queued for the tag. `/sysinfo` `buildversion` = `BUILD_VERSION`.
    - tag DB, kept in `/data`
    - encoding from the official tagtype JSONs
    - HTTP and websocket API compatible with the stock AP, so the official OEPL HA integration works against it

@@ -31,6 +31,7 @@ class TagType:
         self.rotatebuffer = d.get("rotatebuffer", 0)
         # palette order is the order in the JSON: index 0, 1, 2, 3 ... (white, black, red, yellow for 0x94)
         self.colortable = [tuple(v) for v in d.get("colortable", {}).values()]
+        self.colornames = list(d.get("colortable", {}).keys())
         self.zlib = int(d["zlib_compression"], 16) if isinstance(d.get("zlib_compression"), str) else 0
         self.g5 = int(d["g5_compression"], 16) if isinstance(d.get("g5_compression"), str) else 0
         self.shortlut = d.get("shortlut", 0)

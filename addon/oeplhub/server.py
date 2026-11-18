@@ -349,6 +349,25 @@ class Server:
             raise web.HTTPNotFound()
         return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
+    async def api_test_image(self, request):
+        form = await request.post()
+        mac = self.mac_param(form.get("mac") or request.query.get("mac"))
+        t = self.core.db.get(mac) if mac else None
+        if t is None:
+            return web.Response(status=400, text="Error: mac not found")
+        tt = await self.run(self.tagtypes.get, t.hwType)
+        if tt is None:
+            return web.Response(status=400, text=f"Error: unknown tag type {t.hwType:02X}")
+
+        def draw():
+            from . import testimage
+            buf = io.BytesIO()
+            testimage.render(tt, t.rotate).save(buf, "PNG")
+            return buf.getvalue()
+        png = await self.run(draw)
+        status, text = await self.run(self.core.upload_image, mac, png, 0)
+        return web.Response(status=status, text=text)
+
     async def api_media_upload(self, request):
         form = await request.post()
         mac = self.mac_param(form.get("mac"))
@@ -413,6 +432,7 @@ class Server:
             web.get("/api/media", self.api_media),
             web.get("/api/media/thumb", self.api_media_thumb),
             web.post("/api/media/upload", self.api_media_upload),
+            web.post("/api/test_image", self.api_test_image),
             web.get("/api/tag_fw", self.api_tag_fw),
             web.post("/api/tag_fw", self.api_tag_fw_update),
         ])
